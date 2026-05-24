@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/turbo.json",
+  "pipeline": {
+    "dev": {
+      "dependsOn": ["^dev"],
+      "concurrency": 100
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["default"]
+    }
+  }
+}

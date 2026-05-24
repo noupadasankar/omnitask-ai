@@ -1,0 +1,146 @@
+########################################
+# General
+########################################
+.DS_Store
+Thumbs.db
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+########################################
+# Environment files (VERY IMPORTANT)
+########################################
+.env
+.env.*
+!.env.example
+
+########################################
+# Node / Package Managers
+########################################
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
+.yarn-unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+########################################
+# Build outputs
+########################################
+dist/
+build/
+out/
+coverage/
+.tmp/
+.temp/
+
+########################################
+# Turbo / Monorepo
+########################################
+.turbo/
+.cache/
+
+########################################
+# Next.js
+########################################
+.next/
+.vercel/
+
+########################################
+# NestJS
+########################################
+dist/
+*.tsbuildinfo
+
+########################################
+# Prisma
+########################################
+prisma/dev.db
+prisma/dev.db-journal
+
+########################################
+# Playwright / Browser Automation
+########################################
+playwright-report/
+playwright/.cache/
+browser-data/
+screenshots/
+videos/
+downloads/
+
+########################################
+# Testing
+########################################
+coverage/
+.nyc_output/
+test-results/
+
+########################################
+# IDE / Editor
+########################################
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+########################################
+# Docker
+########################################
+docker-data/
+**/docker-data/
+**/.docker/
+
+########################################
+# Kubernetes / Infra Secrets
+########################################
+infra/k8s/secrets/*
+!infra/k8s/secrets/.gitkeep
+
+########################################
+# Logs & Runtime
+########################################
+*.log
+logs/
+pm2.log
+
+########################################
+# Uploads / Storage
+########################################
+uploads/
+storage/
+data/
+minio-data/
+
+########################################
+# OS & Misc
+########################################
+*.bak
+*.tmp
+*.old
+*.orig
+
+########################################
+# Certificates / Keys
+########################################
+*.pem
+*.key
+*.crt
+*.cert
+
+########################################
+# Generated Docs & Diagrams
+########################################
+docs/diagrams/*.drawio
+docs/diagrams/*.tmp
+
+########################################
+# Local Scripts & Debug
+########################################
+scripts/local/
+debug/

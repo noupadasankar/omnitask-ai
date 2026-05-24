@@ -1,0 +1,18 @@
+{
+  "name": "omnitask-ai",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}
