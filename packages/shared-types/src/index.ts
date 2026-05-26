@@ -1,23 +1,11 @@
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'USER' | 'ADMIN';
-}
-
-export interface Task {
-  id: string;
-  rawInput: string;
-  status: string;
-  progress?: number;
-  steps?: Step[];
-}
-
-export interface Step {
-  id: string;
-  index: number;
-  action: string;
-  result?: any;
-  error?: string;
-  duration?: number;
-}
+export * from './task.types';
+export * from './plan.types';
+export * from './execution.types';
+export * from './agent.types';
+export * from './user.types';
+export * from './memory.types';
+export * from './skill.types';
+export * from './file.types';
+export * from './approval.types';
+export * from './websocket.types';
+export * from './api.types';

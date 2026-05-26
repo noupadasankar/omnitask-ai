@@ -1,42 +1,50 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { BullModule } from '@nestjs/bullmq';
-import { AuthModule } from './modules/auth/auth.module';
-import { TasksModule } from './modules/tasks/tasks.module';
-import { PlanningModule } from './modules/planning/planning.module';
-import { ExecutionModule } from './modules/execution/execution.module';
-import { BrowserModule } from './modules/browser/browser.module';
-import { FilesModule } from './modules/files/files.module';
-import { ApprovalsModule } from './modules/approvals/approvals.module';
-import { MemoryModule } from './modules/memory/memory.module';
-import { AgentsModule } from './modules/agents/agents.module';
-import { SkillsModule } from './modules/skills/skills.module';
-import { SchedulerModule } from './modules/scheduler/scheduler.module';
-import { PoliciesModule } from './modules/policies/policies.module';
-import { WsModule } from './shared/websocket/ws.module';
-import { QueueModule } from './shared/queue/queue.module';
+import { ConfigModule } from '@nestjs/config';
+
+import { PrismaModule } from './prisma/prisma.module';
+import { CacheModule } from './cache/cache.module';
+import { QueueModule } from './queue/queue.module';
+
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+import { TasksModule } from './tasks/tasks.module';
+import { FilesModule } from './files/files.module';
+import { WebsocketModule } from './websocket/websocket.module';
+
+import { PlanningModule } from './planning/planning.module';
+import { ExecutionModule } from './execution/execution.module';
+import { MemoryModule } from './memory/memory.module';
+import { AgentModule } from './agent/agent.module';
+import { HealthModule } from './health/health.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env.local', '.env'] }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
-    BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (cfg: ConfigService) => ({
-        connection: { url: cfg.getOrThrow('REDIS_URL') },
-        defaultJobOptions: {
-          removeOnComplete: 50,
-          removeOnFail: 100,
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-        },
-      }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
+      cache: true,
+      expandVariables: true,
     }),
-    AuthModule, TasksModule, PlanningModule, ExecutionModule,
-    BrowserModule, FilesModule, ApprovalsModule, MemoryModule,
-    AgentsModule, SkillsModule, SchedulerModule, PoliciesModule,
-    WsModule, QueueModule,
+
+    PrismaModule,
+    CacheModule,
+    QueueModule,
+
+    AuthModule,
+    UsersModule,
+    TasksModule,
+    FilesModule,
+    WebsocketModule,
+
+    PlanningModule,
+    ExecutionModule,
+    MemoryModule,
+    AgentModule,
+    HealthModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -1,0 +1,26 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull';
+import { WorkerTaskProcessor } from './processors/worker-task.processor';
+
+/**
+ * Optional scale-out worker process.
+ * Runs the same Bull `tasks` queue consumers as the API when WORKER_STANDALONE=true.
+ */
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../../.env'],
+    }),
+    BullModule.forRoot({
+      redis: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: Number(process.env.REDIS_PORT) || 6379,
+      },
+    }),
+    BullModule.registerQueue({ name: 'tasks' }),
+  ],
+  providers: [WorkerTaskProcessor],
+})
+export class WorkerModule {}
