@@ -1,6 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
 
 :root {
   --background: 0 0% 100%;
@@ -41,13 +52,4 @@
   --border: 217.2 32.6% 15.1%;
   --input: 217.2 32.6% 15.1%;
   --ring: 224.7 72% 95.9%;
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
 }

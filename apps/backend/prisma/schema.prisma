@@ -7,97 +7,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── USERS & AUTH ────────────────────────────────────────────────
-
 model User {
-  id                String          @id @default(cuid())
-  email             String          @unique
-  passwordHash      String?
-  name              String?
-  avatarUrl         String?
-  role              Role            @default(USER)
-  mfaEnabled        Boolean         @default(false)
-  mfaSecret         String?
-  emailVerified     Boolean         @default(false)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-
-  oauthAccounts     OAuthAccount[]
-  sessions          Session[]
-  tasks             Task[]
-  files             File[]
-  skills            Skill[]
-  memories          Memory[]
-  schedules         Schedule[]
-  approvals         Approval[]
-  notifications     Notification[]
-  auditLogs         AuditLog[]
-  preferences       UserPreferences?
-  quota             UserQuota?
+  id            String           @id @default(cuid())
+  email         String           @unique
+  passwordHash  String?
+  name          String?
+  avatarUrl     String?
+  role          Role             @default(USER)
+  mfaEnabled    Boolean          @default(false)
+  mfaSecret     String?
+  emailVerified Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  approvals     Approval[]
+  auditLogs     AuditLog[]
+  files         File[]
+  memories      Memory[]
+  notifications Notification[]
+  oauthAccounts OAuthAccount[]
+  schedules     Schedule[]
+  sessions      Session[]
+  skills        Skill[]
+  tasks         Task[]
+  preferences   UserPreferences?
+  quota         UserQuota?
 
   @@index([email])
 }
 
 model UserPreferences {
-  id                String    @id @default(cuid())
-  userId            String    @unique
-  theme             String    @default("dark")
-  defaultShadowMode Boolean   @default(true)
-  notifyOnComplete  Boolean   @default(true)
-  notifyOnApproval  Boolean   @default(true)
-  timezone          String    @default("UTC")
-  language          String    @default("en")
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  theme             String  @default("dark")
+  defaultShadowMode Boolean @default(true)
+  notifyOnComplete  Boolean @default(true)
+  notifyOnApproval  Boolean @default(true)
+  timezone          String  @default("UTC")
+  language          String  @default("en")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model UserQuota {
-  id                String    @id @default(cuid())
-  userId            String    @unique
-  plan              UserPlan  @default(FREE)
-  tasksPerDay       Int       @default(10)
-  tasksUsedToday    Int       @default(0)
-  storageBytes      BigInt    @default(536870912)
-  storageUsedBytes  BigInt    @default(0)
-  concurrentTasks   Int       @default(2)
-  resetAt           DateTime
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  plan             UserPlan @default(FREE)
+  tasksPerDay      Int      @default(10)
+  tasksUsedToday   Int      @default(0)
+  storageBytes     BigInt   @default(536870912)
+  storageUsedBytes BigInt   @default(0)
+  concurrentTasks  Int      @default(2)
+  resetAt          DateTime
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model OAuthAccount {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   provider     String
   providerUid  String
   accessToken  String?
   refreshToken String?
   expiresAt    DateTime?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerUid])
 }
 
 model Session {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  refreshToken String    @unique
+  refreshToken String   @unique
   userAgent    String?
   ipAddress    String?
   expiresAt    DateTime
-  createdAt    DateTime  @default(now())
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ─── TASKS ───────────────────────────────────────────────────────
-
 model Task {
-  id              String        @id @default(cuid())
+  id              String      @id @default(cuid())
   userId          String
   title           String
   naturalLanguage String
-  status          TaskStatus    @default(QUEUED)
-  priority        Priority      @default(MEDIUM)
-  trigger         TaskTrigger   @default(MANUAL)
-  shadowMode      Boolean       @default(false)
+  status          TaskStatus  @default(QUEUED)
+  priority        Priority    @default(MEDIUM)
+  trigger         TaskTrigger @default(MANUAL)
+  shadowMode      Boolean     @default(false)
   riskScore       Float?
   errorMessage    String?
   result          Json?
@@ -108,42 +103,36 @@ model Task {
   scheduleId      String?
   startedAt       DateTime?
   completedAt     DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  user            User          @relation(fields: [userId], references: [id])
-  plan            Plan?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  approvals       Approval[]
   executions      Execution[]
   files           File[]
-  approvals       Approval[]
   memories        Memory[]
-  parentTask      Task?         @relation("subtasks", fields: [parentTaskId], references: [id])
-  subTasks        Task[]        @relation("subtasks")
-  schedule        Schedule?     @relation(fields: [scheduleId], references: [id])
+  plan            Plan?
+  parentTask      Task?       @relation("subtasks", fields: [parentTaskId], references: [id])
+  subTasks        Task[]      @relation("subtasks")
+  schedule        Schedule?   @relation(fields: [scheduleId], references: [id])
+  user            User        @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
   @@index([userId, createdAt(sort: Desc)])
   @@index([planHash])
 }
 
-// ─── PLANS ───────────────────────────────────────────────────────
-
 model Plan {
-  id          String      @id @default(cuid())
-  taskId      String      @unique
-  hash        String      @unique
-  rawOutput   String
-  steps       Json
-  validated   Boolean     @default(false)
-  repaired    Boolean     @default(false)
-  model       String
-  tokensUsed  Int?
-  createdAt   DateTime    @default(now())
-
-  task        Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  taskId     String   @unique
+  hash       String   @unique
+  rawOutput  String
+  steps      Json
+  validated  Boolean  @default(false)
+  repaired   Boolean  @default(false)
+  model      String
+  tokensUsed Int?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
-
-// ─── EXECUTION ───────────────────────────────────────────────────
 
 model Execution {
   id            String          @id @default(cuid())
@@ -154,7 +143,6 @@ model Execution {
   startedAt     DateTime        @default(now())
   completedAt   DateTime?
   durationMs    Int?
-
   task          Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
   steps         ExecutionStep[]
 
@@ -162,12 +150,12 @@ model Execution {
 }
 
 model ExecutionStep {
-  id            String      @id @default(cuid())
+  id            String     @id @default(cuid())
   executionId   String
   stepIndex     Int
   stepType      String
   action        String
-  status        StepStatus  @default(PENDING)
+  status        StepStatus @default(PENDING)
   input         Json?
   output        Json?
   errorMessage  String?
@@ -176,156 +164,132 @@ model ExecutionStep {
   durationMs    Int?
   startedAt     DateTime?
   completedAt   DateTime?
-
-  execution     Execution   @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution     Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, stepIndex])
 }
 
-// ─── APPROVALS ───────────────────────────────────────────────────
-
 model Approval {
-  id          String          @id @default(cuid())
+  id          String         @id @default(cuid())
   taskId      String
   userId      String
   reason      String
   context     Json?
-  status      ApprovalStatus  @default(PENDING)
+  status      ApprovalStatus @default(PENDING)
   expiresAt   DateTime
   respondedAt DateTime?
   response    Json?
-  createdAt   DateTime        @default(now())
-
-  task        Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user        User            @relation(fields: [userId], references: [id])
+  createdAt   DateTime       @default(now())
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
 }
 
-// ─── MEMORY ──────────────────────────────────────────────────────
-
 model Memory {
-  id          String      @id @default(cuid())
+  id          String     @id @default(cuid())
   userId      String
   taskId      String?
   type        MemoryType
   content     String
   summary     String?
   metadata    Json?
-  importance  Float       @default(0.5)
-  accessCount Int         @default(0)
+  importance  Float      @default(0.5)
+  accessCount Int        @default(0)
   lastUsedAt  DateTime?
   expiresAt   DateTime?
-  createdAt   DateTime    @default(now())
-
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task        Task?       @relation(fields: [taskId], references: [id])
+  createdAt   DateTime   @default(now())
+  task        Task?      @relation(fields: [taskId], references: [id])
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type])
 }
 
-// ─── SKILLS ──────────────────────────────────────────────────────
-
 model Skill {
-  id            String    @id @default(cuid())
-  userId        String
-  name          String
-  description   String
-  planTemplate  Json
-  triggerCount  Int       @default(0)
-  successRate   Float     @default(0)
-  version       Int       @default(1)
-  isPublic      Boolean   @default(false)
-  tags          String[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  description  String
+  planTemplate Json
+  triggerCount Int      @default(0)
+  successRate  Float    @default(0)
+  version      Int      @default(1)
+  isPublic     Boolean  @default(false)
+  tags         String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
-// ─── FILES ───────────────────────────────────────────────────────
-
 model File {
-  id          String    @id @default(cuid())
-  userId      String
-  taskId      String?
-  name        String
-  mimeType    String
-  sizeBytes   BigInt
-  storageKey  String    @unique
-  bucketName  String
-  checksum    String
-  metadata    Json?
-  tags        String[]
-  createdAt   DateTime  @default(now())
-
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task        Task?     @relation(fields: [taskId], references: [id])
+  id         String   @id @default(cuid())
+  userId     String
+  taskId     String?
+  name       String
+  mimeType   String
+  sizeBytes  BigInt
+  storageKey String   @unique
+  bucketName String
+  checksum   String
+  metadata   Json?
+  tags       String[]
+  createdAt  DateTime @default(now())
+  task       Task?    @relation(fields: [taskId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
 }
 
-// ─── SCHEDULING ──────────────────────────────────────────────────
-
 model Schedule {
-  id            String    @id @default(cuid())
-  userId        String
-  name          String
+  id             String    @id @default(cuid())
+  userId         String
+  name           String
   cronExpression String
-  taskTemplate  Json
-  enabled       Boolean   @default(true)
-  lastRunAt     DateTime?
-  nextRunAt     DateTime?
-  runCount      Int       @default(0)
-  failCount     Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tasks         Task[]
+  taskTemplate   Json
+  enabled        Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  runCount       Int       @default(0)
+  failCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks          Task[]
 
   @@index([nextRunAt, enabled])
 }
 
-// ─── AUDIT ───────────────────────────────────────────────────────
-
 model AuditLog {
-  id          String    @id @default(cuid())
-  userId      String?
-  action      String
-  resource    String
-  resourceId  String?
-  metadata    Json?
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime  @default(now())
-
-  user        User?     @relation(fields: [userId], references: [id])
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([resource, resourceId])
 }
 
-// ─── NOTIFICATIONS ───────────────────────────────────────────────
-
 model Notification {
-  id        String              @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
   type      NotificationType
   title     String
   body      String
   metadata  Json?
   readAt    DateTime?
-  createdAt DateTime            @default(now())
-
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt])
 }
-
-// ─── ENUMS ───────────────────────────────────────────────────────
 
 enum Role {
   USER
