@@ -1,61 +1,68 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
+import {
+  useEffect,
+  useState,
+} from 'react';
 
 export interface AgentEvent {
   event: string;
+
   data: unknown;
+
   at: string;
 }
 
-export function useSocket(userId?: string | null) {
-  const socketRef = useRef<Socket | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+export function useSocket(
+  userId?: string,
+) {
+  const [connected, setConnected] =
+    useState(false);
 
-  const pushEvent = useCallback((event: string, data: unknown) => {
-    setEvents((prev) => [
-      { event, data, at: new Date().toISOString() },
-      ...prev.slice(0, 199),
-    ]);
-  }, []);
+  const [events, setEvents] = useState<
+    AgentEvent[]
+  >([]);
 
   useEffect(() => {
     if (!userId) return;
 
-    const socket = io(WS_URL, {
-      transports: ['websocket', 'polling'],
-      auth: { userId },
+    const socket = io(
+      process.env
+        .NEXT_PUBLIC_WS_URL ||
+        'http://localhost:4000',
+    );
+
+    socket.on('connect', () => {
+      setConnected(true);
     });
 
-    socketRef.current = socket;
-
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
-
-    const agentEvents = [
-      'agent:started',
-      'agent:step:start',
-      'agent:step:result',
-      'agent:step:error',
-      'agent:completed',
-      'agent:error',
-      'agent:selfheal',
-      'task:execution:started',
-    ];
-
-    agentEvents.forEach((name) => {
-      socket.on(name, (data) => pushEvent(name, data));
+    socket.on('disconnect', () => {
+      setConnected(false);
     });
+
+    socket.on(
+      'agent:event',
+      (payload) => {
+        setEvents((prev) => [
+          {
+            ...payload,
+            at: new Date().toISOString(),
+          },
+
+          ...prev,
+        ]);
+      },
+    );
 
     return () => {
       socket.disconnect();
-      socketRef.current = null;
     };
-  }, [userId, pushEvent]);
+  }, [userId]);
 
-  return { connected, events, clearEvents: () => setEvents([]) };
+  return {
+    connected,
+    events,
+  };
 }

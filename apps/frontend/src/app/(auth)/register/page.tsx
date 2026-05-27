@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { authService } from '@/services/auth.service';
 import { toast } from 'react-hot-toast';
 
 export default function RegisterPage() {
@@ -23,16 +23,19 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const { data } = await authApi.register(email, password, name || undefined);
-      localStorage.setItem('token', data.accessToken);
-      router.push('/dashboard');
+      const res = await authService.register({
+        name,
+        email,
+        password,
+      });
+
+      localStorage.setItem('token', res.data.accessToken);
       toast.success('Account created!');
-    } catch (error: unknown) {
-      const msg =
-        error && typeof error === 'object' && 'response' in error
-          ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
-          : 'Registration failed';
-      toast.error(msg || 'Registration failed');
+      router.push('/dashboard');
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || 'Registration failed'
+      );
     } finally {
       setIsLoading(false);
     }
