@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const MemoryTypeSchema = z.enum(['EPISODIC', 'SEMANTIC', 'WORKING']);
+export const MemoryTypeSchema = z.enum(['EPISODIC', 'SEMANTIC', 'PROCEDURAL', 'WORKING']);
 export type MemoryType = z.infer<typeof MemoryTypeSchema>;
 
 export const MemorySchema = z.object({

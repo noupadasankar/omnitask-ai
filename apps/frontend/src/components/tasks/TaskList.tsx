@@ -1,343 +1,160 @@
 'use client';
 
-import Link from 'next/link';
-
-import {
-  AlertTriangle,
-  BrainCircuit,
-  CheckCircle2,
-  Clock3,
-  Loader2,
-  PlayCircle,
-  Sparkles,
-} from 'lucide-react';
-
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, Loader2, RefreshCw } from 'lucide-react';
 
 import { useTasks } from '@/hooks/useTasks';
+import { TaskCard, type TaskCardData } from './TaskCard';
+import { cn } from '@/lib/utils';
 
-const statusConfig: Record<
-  string,
-  {
-    icon: any;
-    color: string;
-    bg: string;
-    pulse?: boolean;
-  }
-> = {
-  QUEUED: {
-    icon: Clock3,
-    color: 'text-zinc-300',
-    bg: 'bg-zinc-500/10 border-zinc-500/20',
-  },
+interface TaskListProps {
+  limit?: number;
+  variant?: 'compact' | 'full' | 'grid';
+  status?: string;
+  emptyTitle?: string;
+  emptyMessage?: string;
+  onTaskAction?: (action: string, task: TaskCardData) => void;
+}
 
-  PLANNING: {
-    icon: BrainCircuit,
-    color: 'text-blue-400',
-    bg: 'bg-blue-500/10 border-blue-500/20',
-    pulse: true,
-  },
-
-  RUNNING: {
-    icon: PlayCircle,
-    color: 'text-amber-400',
-    bg: 'bg-amber-500/10 border-amber-500/20',
-    pulse: true,
-  },
-
-  COMPLETED: {
-    icon: CheckCircle2,
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-500/10 border-emerald-500/20',
-  },
-
-  FAILED: {
-    icon: AlertTriangle,
-    color: 'text-red-400',
-    bg: 'bg-red-500/10 border-red-500/20',
-  },
-
-  CANCELLED: {
-    icon: AlertTriangle,
-    color: 'text-zinc-500',
-    bg: 'bg-zinc-500/10 border-zinc-500/20',
-  },
-};
+/* ===========================================================
+   COMPONENT
+=========================================================== */
 
 export function TaskList({
   limit,
-}: {
-  limit?: number;
-}) {
-  const { data: tasks, isLoading } =
-    useTasks();
+  variant = 'compact',
+  status,
+  emptyTitle = 'No Active Executions',
+  emptyMessage = 'Launch an autonomous workflow to start execution monitoring.',
+  onTaskAction,
+}: TaskListProps) {
+  const { data: tasks, isLoading, isFetching, refetch } = useTasks();
 
-  const list = limit
-    ? tasks?.slice(0, limit)
-    : tasks;
+  // Filter by status if specified
+  let list = tasks ?? [];
+  if (status) {
+    list = list.filter(
+      (t: any) => t.status?.toUpperCase() === status.toUpperCase(),
+    );
+  }
+  if (limit) list = list.slice(0, limit);
 
+  /* ============ LOADING SKELETONS ============ */
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-red-400" />
-
-          <p className="text-sm text-zinc-500">
-            Connecting to execution runtime...
-          </p>
-        </div>
+      <div
+        className={cn(
+          variant === 'grid'
+            ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3'
+            : 'space-y-2',
+        )}
+      >
+        {Array.from({ length: limit || 5 }).map((_, i) => (
+          <TaskSkeleton key={i} variant={variant} delay={i * 0.05} />
+        ))}
       </div>
     );
   }
 
-  if (!list?.length) {
+  /* ============ EMPTY STATE ============ */
+  if (!list.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.03]">
-          <Sparkles className="h-10 w-10 text-zinc-600" />
+      <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+        <div className="relative mb-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.02]">
+            <Sparkles className="h-7 w-7 text-zinc-700" />
+          </div>
+          <div className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-red-500/20 border border-red-500/30 animate-pulse" />
         </div>
 
-        <h3 className="text-lg font-semibold text-white">
-          No Active Executions
+        <h3 className="text-[14px] font-semibold text-white">
+          {emptyTitle}
         </h3>
-
-        <p className="mt-2 max-w-sm text-sm text-zinc-500">
-          Launch an autonomous workflow to start
-          execution monitoring and runtime tracking.
+        <p className="mt-1.5 max-w-sm text-[12px] leading-relaxed text-zinc-500">
+          {emptyMessage}
         </p>
+
+        <button
+          onClick={() => refetch()}
+          className="mt-5 flex items-center gap-2 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-1.5 text-[11px] text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-white"
+        >
+          <RefreshCw className={cn('h-3 w-3', isFetching && 'animate-spin')} />
+          Refresh
+        </button>
       </div>
     );
   }
 
+  /* ============ LIST ============ */
   return (
-    <div className="space-y-3">
-      {list.map((task, index) => {
-        const config =
-          statusConfig[task.status] ??
-          statusConfig.QUEUED;
-
-        const Icon = config.icon;
-
-        return (
+    <div
+      className={cn(
+        variant === 'grid'
+          ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-3'
+          : variant === 'compact'
+            ? 'space-y-1 p-2'
+            : 'space-y-3',
+      )}
+    >
+      <AnimatePresence mode="popLayout">
+        {list.map((task: any, i: number) => (
           <motion.div
             key={task.id}
-            initial={{
-              opacity: 0,
-              y: 12,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              delay: index * 0.03,
-            }}
+            layout
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ delay: i * 0.04, duration: 0.25 }}
           >
-            <Link
-              href={`/tasks/${task.id}`}
-              className="
-                group
-                relative
-                block
-                overflow-hidden
-                rounded-[26px]
-                border
-                border-white/10
-                bg-white/[0.03]
-                p-5
-                transition-all
-                duration-300
-                hover:border-red-500/20
-                hover:bg-red-500/[0.03]
-              "
-            >
-              {/* GLOW */}
-              <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-red-500/0 blur-3xl transition-all duration-500 group-hover:bg-red-500/10" />
-
-              {/* TOP */}
-              <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                {/* LEFT */}
-                <div className="min-w-0 flex-1">
-                  {/* TITLE */}
-                  <div className="mb-3 flex items-center gap-3">
-                    <div
-                      className={`
-                        flex h-11 w-11 items-center justify-center rounded-2xl border
-                        ${config.bg}
-                      `}
-                    >
-                      <Icon
-                        className={`
-                          h-5 w-5
-                          ${config.color}
-                          ${
-                            config.pulse
-                              ? 'animate-pulse'
-                              : ''
-                          }
-                        `}
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <h3 className="truncate text-lg font-semibold text-white">
-                        {task.title}
-                      </h3>
-
-                      <p className="text-xs text-zinc-500">
-                        Task ID • {task.id.slice(0, 8)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* DESCRIPTION */}
-                  <p className="line-clamp-2 max-w-3xl text-sm leading-relaxed text-zinc-400">
-                    {task.naturalLanguage}
-                  </p>
-
-                  {/* BOTTOM */}
-                  <div className="mt-5 flex flex-wrap items-center gap-4">
-                    <RuntimeBadge
-                      label="PlannerAgent"
-                    />
-
-                    <RuntimeBadge
-                      label="BrowserAgent"
-                    />
-
-                    <RuntimeBadge
-                      label="Execution Graph"
-                    />
-
-                    <span className="text-xs text-zinc-600">
-                      {new Date(
-                        task.createdAt,
-                      ).toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* RIGHT */}
-                <div className="flex flex-col items-start gap-3 xl:items-end">
-                  <div
-                    className={`
-                      flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium uppercase tracking-wide
-                      ${config.bg}
-                      ${config.color}
-                    `}
-                  >
-                    <div
-                      className={`
-                        h-2 w-2 rounded-full
-                        ${
-                          config.pulse
-                            ? 'animate-pulse bg-current'
-                            : 'bg-current'
-                        }
-                      `}
-                    />
-
-                    {task.status}
-                  </div>
-
-                  {/* PROGRESS */}
-                  <div className="w-44">
-                    <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-                      <span>Execution</span>
-
-                      <span>
-                        {getProgress(
-                          task.status,
-                        )}
-                        %
-                      </span>
-                    </div>
-
-                    <div className="h-2 overflow-hidden rounded-full bg-white/5">
-                      <div
-                        className={`
-                          h-full rounded-full transition-all duration-700
-                          ${getProgressColor(
-                            task.status,
-                          )}
-                        `}
-                        style={{
-                          width: `${getProgress(
-                            task.status,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Link>
+            <TaskCard
+              task={task as TaskCardData}
+              variant={variant === 'compact' ? 'compact' : 'full'}
+              onAction={(action, t) => onTaskAction?.(action, t)}
+            />
           </motion.div>
-        );
-      })}
+        ))}
+      </AnimatePresence>
+
+      {isFetching && !isLoading && (
+        <div className="flex items-center justify-center gap-2 py-3 text-[10px] text-zinc-600">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Syncing runtime...
+        </div>
+      )}
     </div>
   );
 }
 
-/* ===================================================== */
-/* HELPERS */
-/* ===================================================== */
+/* ===========================================================
+   SKELETON
+=========================================================== */
 
-function RuntimeBadge({
-  label,
+function TaskSkeleton({
+  variant,
+  delay,
 }: {
-  label: string;
+  variant: string;
+  delay: number;
 }) {
   return (
-    <div className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-zinc-400">
-      {label}
-    </div>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay }}
+      className={cn(
+        'relative overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.01]',
+        variant === 'compact' ? 'h-[58px]' : 'h-[130px]',
+      )}
+    >
+      <div className="absolute inset-0 -translate-x-full animate-progress bg-gradient-to-r from-transparent via-white/[0.03] to-transparent" />
+      <div className="p-3 flex items-center gap-3">
+        <div className="h-2 w-2 rounded-full bg-white/10" />
+        <div className="flex-1 space-y-2">
+          <div className="h-2.5 w-3/4 rounded bg-white/[0.04]" />
+          <div className="h-2 w-1/2 rounded bg-white/[0.03]" />
+        </div>
+        <div className="h-5 w-14 rounded-full bg-white/[0.03]" />
+      </div>
+    </motion.div>
   );
-}
-
-function getProgress(status: string) {
-  switch (status) {
-    case 'QUEUED':
-      return 15;
-
-    case 'PLANNING':
-      return 35;
-
-    case 'RUNNING':
-      return 72;
-
-    case 'COMPLETED':
-      return 100;
-
-    case 'FAILED':
-      return 100;
-
-    case 'CANCELLED':
-      return 0;
-
-    default:
-      return 10;
-  }
-}
-
-function getProgressColor(status: string) {
-  switch (status) {
-    case 'QUEUED':
-      return 'bg-zinc-500';
-
-    case 'PLANNING':
-      return 'bg-blue-500';
-
-    case 'RUNNING':
-      return 'bg-amber-500 animate-pulse';
-
-    case 'COMPLETED':
-      return 'bg-emerald-500';
-
-    case 'FAILED':
-      return 'bg-red-500';
-
-    default:
-      return 'bg-zinc-500';
-  }
 }

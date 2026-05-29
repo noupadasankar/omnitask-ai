@@ -219,11 +219,16 @@ export const getStatusLabel = (status: string): string => {
 };
 
 export const getHealthStatus = (value: number, type: 'success' | 'error' | 'response' = 'success'): 'good' | 'warning' | 'critical' => {
+  if (type === 'response') {
+    // EXECUTION_TIME thresholds: lower is better
+    if (value <= THRESHOLDS.EXECUTION_TIME.FAST) return 'good';
+    if (value <= THRESHOLDS.EXECUTION_TIME.NORMAL) return 'warning';
+    return 'critical';
+  }
+
   const thresholds = type === 'success'
     ? THRESHOLDS.SUCCESS_RATE
-    : type === 'error'
-    ? THRESHOLDS.ERROR_RATE
-    : THRESHOLDS.EXECUTION_TIME;
+    : THRESHOLDS.ERROR_RATE;
 
   if (value >= thresholds.EXCELLENT) return 'good';
   if (value >= thresholds.GOOD) return 'warning';

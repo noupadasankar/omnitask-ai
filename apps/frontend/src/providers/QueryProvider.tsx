@@ -7,8 +7,6 @@ import {
 
 import { ReactNode, useState } from 'react';
 
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-
 export function QueryProvider({
   children,
 }: {
@@ -20,12 +18,8 @@ export function QueryProvider({
         defaultOptions: {
           queries: {
             staleTime: 1000 * 30,
-            gcTime: 1000 * 60 * 10,
-
             retry: 2,
-
             refetchOnWindowFocus: false,
-
             refetchOnReconnect: true,
           },
 
@@ -39,8 +33,6 @@ export function QueryProvider({
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-
-      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );
 }

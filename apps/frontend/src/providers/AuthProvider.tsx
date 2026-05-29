@@ -9,14 +9,14 @@ export function AuthProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const initialize =
+  const fetchUser =
     useAuthStore(
-      (state) => state.initialize,
+      (state) => state.fetchUser,
     );
 
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    fetchUser();
+  }, [fetchUser]);
 
   return <>{children}</>;
 }

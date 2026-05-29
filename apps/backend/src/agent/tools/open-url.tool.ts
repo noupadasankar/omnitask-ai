@@ -12,10 +12,11 @@ export class OpenUrlTool implements Tool {
   constructor(private browserAgent: BrowserAgentService) {}
 
   async execute(input: { url: string; selector?: string }): Promise<any> {
+    let page: any = null;
     try {
       this.logger.log(`🌐 Opening URL: ${input.url}`);
       
-      const page = await this.browserAgent.goTo(input.url);
+      page = await this.browserAgent.goTo(input.url);
       const content = await this.browserAgent.extractText(page, input.selector);
 
       return {
@@ -27,6 +28,10 @@ export class OpenUrlTool implements Tool {
     } catch (error) {
       this.logger.error(`❌ Open URL failed: ${error}`);
       throw error;
+    } finally {
+      if (page) {
+        await page.close().catch(() => {});
+      }
     }
   }
 }

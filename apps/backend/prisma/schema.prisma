@@ -8,29 +8,31 @@ datasource db {
 }
 
 model User {
-  id            String           @id @default(cuid())
-  email         String           @unique
-  passwordHash  String?
-  name          String?
-  avatarUrl     String?
-  role          Role             @default(USER)
-  mfaEnabled    Boolean          @default(false)
-  mfaSecret     String?
-  emailVerified Boolean          @default(false)
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
-  approvals     Approval[]
-  auditLogs     AuditLog[]
-  files         File[]
-  memories      Memory[]
-  notifications Notification[]
-  oauthAccounts OAuthAccount[]
-  schedules     Schedule[]
-  sessions      Session[]
-  skills        Skill[]
-  tasks         Task[]
-  preferences   UserPreferences?
-  quota         UserQuota?
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String?
+  name              String?
+  avatarUrl         String?
+  role              Role               @default(USER)
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  emailVerified     Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  auditLogs         AuditLog[]
+  files             File[]
+  memories          Memory[]
+  notifications     Notification[]
+  oauthAccounts     OAuthAccount[]
+  schedules         Schedule[]
+  sessions          Session[]
+  skills            Skill[]
+  tasks             Task[]
+  preferences       UserPreferences?
+  quota             UserQuota?
+  executionSessions ExecutionSession[] @relation("userExecutionSessions")
+  agentMemories     AgentMemory[]      @relation("userAgentMemories")
 
   @@index([email])
 }
@@ -85,35 +87,36 @@ model Session {
 }
 
 model Task {
-  id              String      @id @default(cuid())
-  userId          String
-  title           String
-  naturalLanguage String
-  status          TaskStatus  @default(QUEUED)
-  priority        Priority    @default(MEDIUM)
-  trigger         TaskTrigger @default(MANUAL)
-  shadowMode      Boolean     @default(false)
-  riskScore       Float?
-  errorMessage    String?
-  result          Json?
-  context         Json?
-  agentType       String?
-  planHash        String?
-  parentTaskId    String?
-  scheduleId      String?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  approvals       Approval[]
-  executions      Execution[]
-  files           File[]
-  memories        Memory[]
-  plan            Plan?
-  parentTask      Task?       @relation("subtasks", fields: [parentTaskId], references: [id])
-  subTasks        Task[]      @relation("subtasks")
-  schedule        Schedule?   @relation(fields: [scheduleId], references: [id])
-  user            User        @relation(fields: [userId], references: [id])
+  id                String             @id @default(cuid())
+  userId            String
+  title             String
+  naturalLanguage   String
+  status            TaskStatus         @default(QUEUED)
+  priority          Priority           @default(MEDIUM)
+  trigger           TaskTrigger        @default(MANUAL)
+  shadowMode        Boolean            @default(false)
+  riskScore         Float?
+  errorMessage      String?
+  result            Json?
+  context           Json?
+  agentType         String?
+  planHash          String?
+  parentTaskId      String?
+  scheduleId        String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  executions        Execution[]
+  executionSessions ExecutionSession[]
+  files             File[]
+  memories          Memory[]
+  plan              Plan?
+  parentTask        Task?              @relation("subtasks", fields: [parentTaskId], references: [id])
+  subTasks          Task[]             @relation("subtasks")
+  schedule          Schedule?          @relation(fields: [scheduleId], references: [id])
+  user              User               @relation(fields: [userId], references: [id])
 
   @@index([userId, status])
   @@index([userId, createdAt(sort: Desc)])
@@ -150,21 +153,21 @@ model Execution {
 }
 
 model ExecutionStep {
-  id            String     @id @default(cuid())
-  executionId   String
-  stepIndex     Int
-  stepType      String
-  action        String
-  status        StepStatus @default(PENDING)
-  input         Json?
-  output        Json?
-  errorMessage  String?
-  screenshotKey String?
-  domSnapshot   String?
-  durationMs    Int?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  execution     Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  id             String     @id @default(cuid())
+  executionId    String
+  stepIndex      Int
+  stepType       String
+  action         String
+  status         StepStatus @default(PENDING)
+  input          Json?
+  output         Json?
+  errorMessage   String?
+  screenshotKey  String?
+  domSnapshot    String?
+  durationMs     Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  execution      Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, stepIndex])
 }
@@ -291,6 +294,142 @@ model Notification {
   @@index([userId, readAt])
 }
 
+// ─── Autonomous Browser Agent Models ──────────────────────────
+
+model AgentExecutionStep {
+  id             String            @id @default(cuid())
+  sessionId      String
+  session        ExecutionSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex      Int
+  action         String
+  target         String?
+  value          String?
+  description    String
+  riskLevel      RiskLevel
+  status         StepStatusAgent   @default(PENDING)
+  result         Json?
+  screenshotUrl  String?
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  durationMs     Int?
+  retryCount     Int               @default(0)
+  visionAnalysis Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([sessionId])
+  @@index([status])
+  @@unique([sessionId, stepIndex])
+}
+
+enum StepStatusAgent {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  WAITING_APPROVAL
+}
+
+model ExecutionSession {
+  id               String               @id @default(cuid())
+  taskId           String
+  task             Task                 @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User                 @relation("userExecutionSessions", fields: [userId], references: [id], onDelete: Cascade)
+  status           ExecutionSessionStatus @default(PENDING)
+  plan             Json?
+  currentStepIndex Int                  @default(0)
+  totalSteps       Int                  @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  errorMessage     String?
+  metadata         Json?
+  steps            AgentExecutionStep[]
+  screenshots      Screenshot[]
+  approvalRequests ApprovalRequest[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ExecutionSessionStatus {
+  PENDING
+  PLANNING
+  RUNNING
+  PAUSED
+  WAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Screenshot {
+  id              String           @id @default(cuid())
+  sessionId       String
+  session         ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex       Int?
+  imageUrl        String
+  base64Thumbnail String?
+  width           Int
+  height          Int
+  timestamp       DateTime         @default(now())
+  metadata        Json?
+
+  @@index([sessionId])
+}
+
+model ApprovalRequest {
+  id            String           @id @default(cuid())
+  sessionId     String
+  session       ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex     Int
+  riskLevel     RiskLevel
+  description   String
+  actionDetails Json
+  screenshotUrl String?
+  status        ApprovalStatus   @default(PENDING)
+  respondedAt   DateTime?
+  respondedBy   String?
+  createdAt     DateTime         @default(now())
+  expiresAt     DateTime
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model AgentMemory {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation("userAgentMemories", fields: [userId], references: [id], onDelete: Cascade)
+  type           MemoryType
+  key            String
+  content        String
+  embedding      Float[]
+  importance     Float      @default(0.5)
+  accessCount    Int        @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+  metadata       Json?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([key])
+}
+
 enum Role {
   USER
   ADMIN
@@ -330,6 +469,7 @@ enum StepStatus {
   FAILED
   SKIPPED
   COMPENSATED
+  WAITING_APPROVAL
 }
 
 enum ApprovalStatus {
@@ -342,6 +482,7 @@ enum ApprovalStatus {
 enum MemoryType {
   EPISODIC
   SEMANTIC
+  PROCEDURAL
   WORKING
 }
 

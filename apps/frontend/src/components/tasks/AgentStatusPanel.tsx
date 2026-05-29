@@ -1,352 +1,229 @@
 'use client';
 
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Activity,
   Bot,
   BrainCircuit,
-  CheckCircle2,
-  Clock3,
-  Cpu,
   Globe,
   ShieldCheck,
+  Cpu,
   Wifi,
   WifiOff,
+  Zap,
+  ArrowUpRight,
 } from 'lucide-react';
 
-import { motion } from 'framer-motion';
+import type { AgentEvent } from '@/hooks/useSocket';
+import { cn, timeAgo } from '@/lib/utils';
 
-import { AgentEvent } from '@/hooks/useSocket';
+/* ===========================================================
+   AGENT DEFINITIONS
+=========================================================== */
 
-const agents = [
+const AGENTS = [
   {
     name: 'PlannerAgent',
+    role: 'Task decomposition',
     icon: BrainCircuit,
-    status: 'ACTIVE',
     color: 'text-purple-400',
-    bg: 'bg-purple-500/10 border-purple-500/20',
+    bg: 'bg-purple-500/10',
+    border: 'border-purple-500/20',
+    status: 'active' as const,
+    tasks: 3,
   },
-
   {
     name: 'BrowserAgent',
+    role: 'Web automation',
     icon: Globe,
-    status: 'RUNNING',
     color: 'text-blue-400',
-    bg: 'bg-blue-500/10 border-blue-500/20',
+    bg: 'bg-blue-500/10',
+    border: 'border-blue-500/20',
+    status: 'active' as const,
+    tasks: 1,
   },
-
   {
     name: 'PolicyEngine',
+    role: 'Safety validation',
     icon: ShieldCheck,
-    status: 'VALIDATING',
     color: 'text-emerald-400',
-    bg: 'bg-emerald-500/10 border-emerald-500/20',
+    bg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/20',
+    status: 'idle' as const,
+    tasks: 0,
   },
-
   {
     name: 'ExecutionCore',
+    role: 'Action runtime',
     icon: Cpu,
-    status: 'LIVE',
     color: 'text-red-400',
-    bg: 'bg-red-500/10 border-red-500/20',
+    bg: 'bg-red-500/10',
+    border: 'border-red-500/20',
+    status: 'active' as const,
+    tasks: 2,
   },
 ];
+
+/* ===========================================================
+   COMPONENT
+=========================================================== */
+
+interface AgentStatusPanelProps {
+  connected: boolean;
+  events: AgentEvent[];
+  variant?: 'compact' | 'full';
+}
 
 export function AgentStatusPanel({
   connected,
   events,
-}: {
-  connected: boolean;
-
-  events: AgentEvent[];
-}) {
+  variant = 'compact',
+}: AgentStatusPanelProps) {
   return (
-    <div className="space-y-6">
-      {/* ================================================= */}
+    <div className="space-y-4">
+
+      {/* ============================================ */}
       {/* HEADER */}
-      {/* ================================================= */}
-
-      <div className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-        {/* TOP */}
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
-          <div>
-            <h2 className="text-xl font-semibold text-white">
-              Autonomous Runtime
-            </h2>
-
-            <p className="mt-1 text-sm text-zinc-500">
-              Multi-agent orchestration network
-            </p>
-          </div>
-
-          {/* STATUS */}
-          <div
-            className={`
-              flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-medium
-              ${
-                connected
-                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border-zinc-500/20 bg-zinc-500/10 text-zinc-500'
-              }
-            `}
-          >
-            {connected ? (
-              <>
-                <Wifi className="h-3.5 w-3.5" />
-
-                Runtime Live
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-3.5 w-3.5" />
-
-                Offline
-              </>
-            )}
-          </div>
+      {/* ============================================ */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-zinc-500" />
+          <h3 className="text-[13px] font-semibold text-white">
+            Agent Runtime
+          </h3>
         </div>
 
-        {/* AGENTS */}
-        <div className="space-y-4 p-5">
-          {agents.map((agent, index) => {
-            const Icon = agent.icon;
-
-            return (
-              <motion.div
-                key={agent.name}
-                initial={{
-                  opacity: 0,
-                  y: 10,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
-                transition={{
-                  delay: index * 0.04,
-                }}
-                className="
-                  group
-                  relative
-                  overflow-hidden
-                  rounded-2xl
-                  border
-                  border-white/10
-                  bg-black/20
-                  p-4
-                "
-              >
-                {/* GLOW */}
-                <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-red-500/0 blur-3xl transition-all duration-500 group-hover:bg-red-500/10" />
-
-                <div className="relative z-10 flex items-center justify-between">
-                  {/* LEFT */}
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`
-                        flex h-12 w-12 items-center justify-center rounded-2xl border
-                        ${agent.bg}
-                      `}
-                    >
-                      <Icon
-                        className={`h-6 w-6 ${agent.color}`}
-                      />
-                    </div>
-
-                    <div>
-                      <h3 className="font-medium text-white">
-                        {agent.name}
-                      </h3>
-
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Autonomous execution node
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* RIGHT */}
-                  <div className="flex items-center gap-3">
-                    <div className="hidden text-right md:block">
-                      <p className="text-xs text-zinc-500">
-                        Runtime Health
-                      </p>
-
-                      <p className="mt-1 text-sm font-medium text-white">
-                        Operational
-                      </p>
-                    </div>
-
-                    <div
-                      className={`
-                        flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium
-                        ${agent.bg}
-                        ${agent.color}
-                      `}
-                    >
-                      <div className="h-2 w-2 animate-pulse rounded-full bg-current" />
-
-                      {agent.status}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ================================================= */}
-      {/* LIVE EVENTS */}
-      {/* ================================================= */}
-
-      <div className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] backdrop-blur-xl">
-        {/* TOP */}
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
-          <div>
-            <h2 className="text-lg font-semibold text-white">
-              Runtime Feed
-            </h2>
-
-            <p className="mt-1 text-sm text-zinc-500">
-              Live execution telemetry
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs text-red-300">
-            <Activity className="h-3.5 w-3.5" />
-
-            STREAMING
-          </div>
-        </div>
-
-        {/* EVENTS */}
-        <div className="max-h-[520px] space-y-3 overflow-y-auto p-5">
-          {events.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-black/30">
-                <Bot className="h-10 w-10 text-zinc-600" />
-              </div>
-
-              <h3 className="text-lg font-semibold text-white">
-                Waiting for Runtime Events
-              </h3>
-
-              <p className="mt-2 max-w-sm text-sm text-zinc-500">
-                Agent execution logs and telemetry
-                will appear here in realtime.
-              </p>
-            </div>
+        <div
+          className={cn(
+            'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+            connected
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+              : 'border-zinc-500/20 bg-zinc-500/10 text-zinc-500',
+          )}
+        >
+          {connected ? (
+            <>
+              <Wifi className="h-2.5 w-2.5" />
+              LIVE
+            </>
           ) : (
-            events.map((ev, i) => (
-              <motion.div
-                key={`${ev.at}-${i}`}
-                initial={{
-                  opacity: 0,
-                  y: 10,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
-                transition={{
-                  delay: i * 0.02,
-                }}
-                className="
-                  overflow-hidden
-                  rounded-2xl
-                  border
-                  border-white/10
-                  bg-black/30
-                "
-              >
-                {/* TOP */}
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" />
-
-                    <span className="font-mono text-xs text-emerald-400">
-                      {ev.event}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
-                    <Clock3 className="h-3 w-3" />
-
-                    {new Date(
-                      ev.at,
-                    ).toLocaleTimeString()}
-                  </div>
-                </div>
-
-                {/* CONTENT */}
-                <div className="p-4">
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-zinc-400">
-                    {JSON.stringify(
-                      ev.data,
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </div>
-              </motion.div>
-            ))
+            <>
+              <WifiOff className="h-2.5 w-2.5" />
+              OFFLINE
+            </>
           )}
         </div>
       </div>
 
-      {/* ================================================= */}
-      {/* SYSTEM HEALTH */}
-      {/* ================================================= */}
+      {/* ============================================ */}
+      {/* AGENTS */}
+      {/* ============================================ */}
+      <div className="space-y-1.5">
+        {AGENTS.map((agent, i) => {
+          const Icon = agent.icon;
+          const isActive = agent.status === 'active';
 
-      <div className="grid grid-cols-2 gap-4">
-        <HealthCard
-          label="Latency"
-          value="142ms"
-        />
+          return (
+            <motion.div
+              key={agent.name}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05 }}
+              className="group relative flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-2.5 transition-all hover:bg-white/[0.04] cursor-pointer"
+            >
+              {/* Icon */}
+              <div className="relative flex-shrink-0">
+                <div
+                  className={cn(
+                    'flex h-9 w-9 items-center justify-center rounded-xl border',
+                    agent.bg,
+                    agent.border,
+                  )}
+                >
+                  <Icon className={cn('h-4 w-4', agent.color)} />
+                </div>
+                <div
+                  className={cn(
+                    'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-black',
+                    isActive ? 'bg-emerald-400' : 'bg-zinc-600',
+                  )}
+                />
+              </div>
 
-        <HealthCard
-          label="Queue Depth"
-          value="12"
-        />
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-white truncate">
+                  {agent.name}
+                </p>
+                <p className="text-[10px] text-zinc-500 truncate">
+                  {agent.role}
+                </p>
+              </div>
 
-        <HealthCard
-          label="Success Rate"
-          value="98.2%"
-        />
+              {/* Task count */}
+              {agent.tasks > 0 ? (
+                <div className="flex items-center gap-1 rounded-md border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5">
+                  <Zap className="h-2.5 w-2.5 text-yellow-400" />
+                  <span className="text-[10px] font-bold text-yellow-400">
+                    {agent.tasks}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-zinc-700">idle</span>
+              )}
 
-        <HealthCard
-          label="Workers"
-          value="04"
-        />
+              <ArrowUpRight className="h-3 w-3 text-zinc-700 opacity-0 transition-opacity group-hover:opacity-100" />
+            </motion.div>
+          );
+        })}
       </div>
-    </div>
-  );
-}
 
-/* ===================================================== */
-/* HEALTH CARD */
-/* ===================================================== */
+      {/* ============================================ */}
+      {/* LIVE EVENT FEED (only if variant=full) */}
+      {/* ============================================ */}
+      {variant === 'full' && (
+        <div className="mt-4 rounded-xl border border-white/[0.05] bg-black/30 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-white/[0.05] px-3 py-2">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+              Event Stream
+            </span>
+            <span className="text-[10px] text-zinc-600">
+              {events.length} events
+            </span>
+          </div>
 
-function HealthCard({
-  label,
-  value,
-}: {
-  label: string;
-
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs text-zinc-500">
-          {label}
-        </p>
-
-        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-      </div>
-
-      <p className="text-2xl font-bold text-white">
-        {value}
-      </p>
+          <div className="max-h-[200px] overflow-y-auto p-2 space-y-1">
+            <AnimatePresence initial={false}>
+              {events.length === 0 ? (
+                <div className="py-6 text-center">
+                  <p className="text-[11px] text-zinc-600">
+                    Waiting for runtime events...
+                  </p>
+                </div>
+              ) : (
+                events.slice(0, 12).map((ev, i) => (
+                  <motion.div
+                    key={`${ev.at}-${i}`}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-white/[0.02]"
+                  >
+                    <div className="mt-1 h-1 w-1 rounded-full bg-emerald-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-mono text-[10px] text-emerald-400">
+                        {ev.event}
+                      </p>
+                      <p className="text-[10px] text-zinc-600">
+                        {timeAgo(ev.at)}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
