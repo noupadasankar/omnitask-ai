@@ -17,7 +17,8 @@
     "db:studio": "pnpm --filter backend prisma studio"
   },
   "devDependencies": {
-    "prisma": "5.22.0",
+    "prisma": "^7.8.0",
     "turbo": "^2.0.0"
-  }
+  },
+  "dependencies": {}
 }

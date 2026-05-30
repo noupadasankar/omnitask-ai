@@ -102,12 +102,24 @@ export class AuthService {
       this.saltRounds,
     );
 
+    const resetAt = new Date();
+    resetAt.setHours(24, 0, 0, 0);
+
     const user = await this.prisma.user.create({
       data: {
         email,
         name,
         passwordHash,
         role: 'USER', // ✅ explicit default
+        quota: {
+          create: {
+            plan: 'FREE',
+            resetAt,
+          },
+        },
+        preferences: {
+          create: {},
+        },
       },
     });
 
