@@ -1,19 +1,19 @@
-import { Module } from '@nestjs/common';
-import { BrowserAgentService } from '../browser-agent.service';
+import { Module, forwardRef } from '@nestjs/common';
+import { AgentModule } from '../agent.module';
 import { ToolRegistryService } from './tool-registry.service';
 import { GoogleSearchTool } from './google-search.tool';
 import { OpenUrlTool } from './open-url.tool';
 import { ExtractTextTool } from './extract-text.tool';
 
 @Module({
+  imports: [forwardRef(() => AgentModule)],
   providers: [
-    BrowserAgentService,
     ToolRegistryService,
     GoogleSearchTool,
     OpenUrlTool,
     ExtractTextTool,
   ],
-  exports: [BrowserAgentService, ToolRegistryService],
+  exports: [ToolRegistryService],
 })
 export class ToolsModule {
   constructor(

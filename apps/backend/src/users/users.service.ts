@@ -11,10 +11,8 @@ export class UsersService {
   private userSelect = {
     id: true,
     email: true,
-    firstName: true,
-    lastName: true,
+    name: true,
     role: true,
-    isActive: true,
     createdAt: true,
     updatedAt: true,
   };
@@ -48,12 +46,8 @@ export class UsersService {
     const data: any = {};
 
     // 👤 Basic fields
-    if (updateUserDto.firstName !== undefined) {
-      data.firstName = updateUserDto.firstName;
-    }
-
-    if (updateUserDto.lastName !== undefined) {
-      data.lastName = updateUserDto.lastName;
+    if (updateUserDto.name !== undefined) {
+      data.name = updateUserDto.name;
     }
 
     // 📧 Email uniqueness check

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Settings,
   Workflow,
+  Cpu,
 } from 'lucide-react';
 
 export const navigation = [

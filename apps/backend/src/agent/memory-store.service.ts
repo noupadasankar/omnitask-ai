@@ -93,7 +93,7 @@ export class MemoryStoreService {
             take: limit * 2,
           });
 
-      const scored = memories.map((m) => {
+      const scored = memories.map((m: any) => {
         const similarity = this.cosineSimilarity(
           queryEmbedding,
           (m.embedding as any) || [],
@@ -102,10 +102,10 @@ export class MemoryStoreService {
       });
 
       const filtered = scored
-        .filter((s) => s.similarity >= similarityThreshold)
-        .sort((a, b) => b.similarity - a.similarity)
+        .filter((s: any) => s.similarity >= similarityThreshold)
+        .sort((a: any, b: any) => b.similarity - a.similarity)
         .slice(0, limit)
-        .map((s) => s.memory);
+        .map((s: any) => s.memory);
 
       for (const memory of filtered) {
         await this.prisma.agentMemory.update({
@@ -165,7 +165,7 @@ export class MemoryStoreService {
       success,
       duration,
       stepCount: steps.length,
-      stepsSummary: steps.map((s) => `${s.action}(${s.target})`).join(' → '),
+      stepsSummary: steps.map((s: any) => `${s.action}(${s.target})`).join(' → '),
     };
 
     await this.store(

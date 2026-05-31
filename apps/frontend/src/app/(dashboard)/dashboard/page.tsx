@@ -47,7 +47,22 @@ import { cn } from '@/lib/utils';
 import { useSocket } from '@/providers/SocketProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { taskService } from '@/services/task.service';
-import { startAgentExecution, getAgentSessionSteps } from '@/services/agent.service';
+import {
+  startAgentExecution,
+  getAgentSessionSteps,
+  getUserProfileCard,
+  saveUserProfileCard,
+  listSkills
+} from '@/services/agent.service';
+import {
+  User as UserIcon,
+  Mail as MailIcon,
+  Phone as PhoneIcon,
+  MapPin as MapPinIcon,
+  Trash2 as Trash2Icon,
+  Save as SaveIcon,
+  Plus as PlusIcon
+} from 'lucide-react';
 import '@/styles/omnitask-dashboard.css';
 
 /* ===========================================================
@@ -1358,12 +1373,103 @@ export default function DashboardPage() {
   const [currentOpIndex, setCurrentOpIndex] = useState(-1);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [taskHistory, setTaskHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'logs' | 'thoughts'>('thoughts');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'logs' | 'thoughts' | 'profile' | 'skills'>('thoughts');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simLogs, setSimLogs] = useState<Array<{ level: string; message: string; timestamp: number }>>([]);
   const [simulatedCursor, setSimulatedCursor] = useState<{ x: number; y: number; visible: boolean; text: string }>({ x: 0, y: 0, visible: false, text: '' });
   const [currentStreamingThought, setCurrentStreamingThought] = useState('');
   const [thoughtsHistory, setThoughtsHistory] = useState<Array<{ agent: string; text: string; timestamp: number }>>([]);
+
+  // User Profile Memory States
+  const [profile, setProfile] = useState<any>({
+    name: '',
+    email: '',
+    phone: '',
+    addresses: [],
+    paymentPreferences: {},
+    resumes: [],
+    favoriteSites: []
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [newAddress, setNewAddress] = useState('');
+  const [newSite, setNewSite] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Skill definitions from registry
+  const [skills, setSkills] = useState<any[]>([]);
+
+  // Load profile and skills on mount
+  useEffect(() => {
+    async function loadData() {
+      setProfileLoading(true);
+      try {
+        const card = await getUserProfileCard();
+        if (card) {
+          setProfile({
+            name: card.name || '',
+            email: card.email || '',
+            phone: card.phone || '',
+            addresses: card.addresses || [],
+            paymentPreferences: card.paymentPreferences || {},
+            resumes: card.resumes || [],
+            favoriteSites: card.favoriteSites || []
+          });
+        }
+        const skillsList = await listSkills();
+        if (skillsList) {
+          setSkills(skillsList);
+        }
+      } catch (err) {
+        console.error('Failed to load profile memory or skill definition:', err);
+      } finally {
+        setProfileLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const addAddress = () => {
+    if (!newAddress.trim()) return;
+    setProfile((prev: any) => ({
+      ...prev,
+      addresses: [...prev.addresses, newAddress.trim()]
+    }));
+    setNewAddress('');
+  };
+
+  const removeAddress = (idx: number) => {
+    setProfile((prev: any) => ({
+      ...prev,
+      addresses: prev.addresses.filter((_: any, i: number) => i !== idx)
+    }));
+  };
+
+  const addFavoriteSite = () => {
+    if (!newSite.trim()) return;
+    setProfile((prev: any) => ({
+      ...prev,
+      favoriteSites: [...prev.favoriteSites, newSite.trim()]
+    }));
+    setNewSite('');
+  };
+
+  const removeFavoriteSite = (idx: number) => {
+    setProfile((prev: any) => ({
+      ...prev,
+      favoriteSites: prev.favoriteSites.filter((_: any, i: number) => i !== idx)
+    }));
+  };
+
+  const saveProfileCard = async () => {
+    setSavingProfile(true);
+    try {
+      await saveUserProfileCard(profile);
+    } catch (err: any) {
+      console.error('Failed to save profile memory:', err);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const logContainerRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2089,11 +2195,11 @@ export default function DashboardPage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-white/[0.06] bg-black/20">
+              <div className="flex border-b border-white/[0.06] bg-black/20 overflow-x-auto flex-shrink-0">
                 <button
                   onClick={() => setActiveTab('thoughts')}
                   className={cn(
-                    'flex-1 py-3 text-xs font-bold border-b-2 transition-all',
+                    'flex-shrink-0 px-4 py-3 text-xs font-bold border-b-2 transition-all',
                     activeTab === 'thoughts'
                       ? 'border-red-500 text-white'
                       : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -2104,24 +2210,46 @@ export default function DashboardPage() {
                 <button
                   onClick={() => setActiveTab('timeline')}
                   className={cn(
-                    'flex-1 py-3 text-xs font-bold border-b-2 transition-all',
+                    'flex-shrink-0 px-4 py-3 text-xs font-bold border-b-2 transition-all',
                     activeTab === 'timeline'
                       ? 'border-red-500 text-white'
                       : 'border-transparent text-zinc-500 hover:text-zinc-300'
                   )}
                 >
-                  Steps Timeline
+                  Timeline
                 </button>
                 <button
                   onClick={() => setActiveTab('logs')}
                   className={cn(
-                    'flex-1 py-3 text-xs font-bold border-b-2 transition-all',
+                    'flex-shrink-0 px-4 py-3 text-xs font-bold border-b-2 transition-all',
                     activeTab === 'logs'
                       ? 'border-red-500 text-white'
                       : 'border-transparent text-zinc-500 hover:text-zinc-300'
                   )}
                 >
-                  Live Logs ({(socketLogs.length + simLogs.length)})
+                  Logs ({(socketLogs.length + simLogs.length)})
+                </button>
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className={cn(
+                    'flex-shrink-0 px-4 py-3 text-xs font-bold border-b-2 transition-all',
+                    activeTab === 'profile'
+                      ? 'border-red-500 text-white'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                  )}
+                >
+                  Profile Memory
+                </button>
+                <button
+                  onClick={() => setActiveTab('skills')}
+                  className={cn(
+                    'flex-shrink-0 px-4 py-3 text-xs font-bold border-b-2 transition-all',
+                    activeTab === 'skills'
+                      ? 'border-red-500 text-white'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                  )}
+                >
+                  Skills Show ({skills.length})
                 </button>
               </div>
 
@@ -2243,7 +2371,7 @@ export default function DashboardPage() {
                       </motion.div>
                     );
                   })
-                ) : (() => {
+                ) : activeTab === 'logs' ? (() => {
                   const allLogs = [...simLogs, ...socketLogs].sort((a, b) => a.timestamp - b.timestamp);
                   return allLogs.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full py-12 text-zinc-600">
@@ -2270,7 +2398,158 @@ export default function DashboardPage() {
                       ))}
                     </div>
                   );
-                })()}
+                })() : activeTab === 'profile' ? (
+                  <div className="space-y-6 p-4 text-left font-mono text-xs">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <Brain className="h-4 w-4 text-red-400 animate-pulse" />
+                        UserProfileMemory Card
+                      </h4>
+                      <button
+                        onClick={saveProfileCard}
+                        disabled={savingProfile}
+                        className="h-8 px-3 rounded-lg bg-red-500 text-[10px] font-bold text-white transition-all hover:scale-105 flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {savingProfile ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <SaveIcon className="h-3.5 w-3.5" />
+                        )}
+                        SAVE
+                      </button>
+                    </div>
+
+                    {profileLoading ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-zinc-500 font-mono text-[10px] gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-red-500" />
+                        LOADING SECURE SEMANTIC CARD...
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[9px] text-zinc-500 uppercase tracking-widest">Personal Details</label>
+                          <div className="grid grid-cols-1 gap-2">
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.01]">
+                              <UserIcon className="h-3.5 w-3.5 text-zinc-500" />
+                              <input
+                                type="text"
+                                value={profile.name}
+                                onChange={(e) => setProfile((p: any) => ({ ...p, name: e.target.value }))}
+                                placeholder="Full Name"
+                                className="bg-transparent border-none text-white text-xs placeholder-zinc-700 focus:outline-none flex-1 font-mono"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.01]">
+                              <MailIcon className="h-3.5 w-3.5 text-zinc-500" />
+                              <input
+                                type="email"
+                                value={profile.email}
+                                onChange={(e) => setProfile((p: any) => ({ ...p, email: e.target.value }))}
+                                placeholder="Email Address"
+                                className="bg-transparent border-none text-white text-xs placeholder-zinc-700 focus:outline-none flex-1 font-mono"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-white/5 bg-white/[0.01]">
+                              <PhoneIcon className="h-3.5 w-3.5 text-zinc-500" />
+                              <input
+                                type="text"
+                                value={profile.phone}
+                                onChange={(e) => setProfile((p: any) => ({ ...p, phone: e.target.value }))}
+                                placeholder="Phone Number"
+                                className="bg-transparent border-none text-white text-xs placeholder-zinc-700 focus:outline-none flex-1 font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[9px] text-zinc-500 uppercase tracking-widest">Addresses</label>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={newAddress}
+                              onChange={(e) => setNewAddress(e.target.value)}
+                              placeholder="New address line..."
+                              className="flex-1 bg-white/[0.01] border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-700 focus:outline-none font-mono"
+                            />
+                            <button
+                              onClick={addAddress}
+                              className="h-8 w-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-red-500 text-white transition-all hover:scale-105"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="space-y-1.5 max-h-[100px] overflow-y-auto">
+                            {profile.addresses.map((addr: string, i: number) => (
+                              <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-white/5 bg-white/[0.01] text-[11px] text-zinc-400">
+                                <span className="truncate">{addr}</span>
+                                <button onClick={() => removeAddress(i)} className="text-zinc-600 hover:text-red-400">
+                                  <Trash2Icon className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[9px] text-zinc-500 uppercase tracking-widest">Favorite Portals</label>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={newSite}
+                              onChange={(e) => setNewSite(e.target.value)}
+                              placeholder="Domain (e.g. flipkart.com)..."
+                              className="flex-1 bg-white/[0.01] border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-700 focus:outline-none font-mono"
+                            />
+                            <button
+                              onClick={addFavoriteSite}
+                              className="h-8 w-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-red-500 text-white transition-all hover:scale-105"
+                            >
+                              <PlusIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="space-y-1.5 max-h-[100px] overflow-y-auto">
+                            {profile.favoriteSites.map((site: string, i: number) => (
+                              <div key={i} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-white/5 bg-white/[0.01] text-[11px] text-zinc-400">
+                                <span className="truncate">{site}</span>
+                                <button onClick={() => removeFavoriteSite(i)} className="text-zinc-600 hover:text-red-400">
+                                  <Trash2Icon className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4 p-4 text-left font-mono text-xs">
+                    <div className="border-b border-white/5 pb-2">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Universal Primitive Skills</h4>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">Modular building blocks composing planned workflows.</p>
+                    </div>
+
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                      {skills.map((sk) => (
+                        <div key={sk.name} className="p-3 rounded-xl border border-white/5 bg-white/[0.01] space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                            <span className="text-xs font-bold text-white">{sk.name}</span>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 leading-normal">{sk.description}</p>
+                          <div className="space-y-1">
+                            {Object.keys(sk.parameters || {}).map((param) => (
+                              <div key={param} className="flex items-center justify-between text-[9px] bg-black/35 rounded px-2 py-0.5 text-zinc-500">
+                                <span>{param}</span>
+                                <span>{sk.parameters[param].type}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Completion summary */}
                 {phase === 'completed' && (

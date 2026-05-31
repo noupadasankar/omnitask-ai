@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
 import { Cpu, Loader2, Lock, Mail, ArrowRight } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 export default function LoginPage() {
@@ -15,14 +15,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      const { data } = await authApi.login(email, password);
-      localStorage.setItem('token', data.accessToken);
+      await login(email, password);
       router.push('/dashboard');
       toast.success('Authentication successful. Welcome to the Runtime.');
     } catch (error: any) {
@@ -115,7 +115,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-zinc-400">Password</label>
                 <Link href="/forgot-password" className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors">
-                  Forgot sequence?
+                  Forgot Password?
                 </Link>
               </div>
               <div className="relative">

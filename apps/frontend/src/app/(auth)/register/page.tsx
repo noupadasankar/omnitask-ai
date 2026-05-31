@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast';
 
 import { Cpu, Loader2, Lock, Mail, User, ShieldCheck } from 'lucide-react';
 import { authService } from '@/services/auth.service';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 export default function RegisterPage() {
@@ -16,6 +17,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { setUser } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +26,7 @@ export default function RegisterPage() {
     try {
       const res = await authService.register({ name, email, password });
       localStorage.setItem('token', res.data.accessToken);
+      setUser(res.data.user);
       toast.success('Identity verified. Access granted.');
       router.push('/dashboard');
     } catch (error: any) {

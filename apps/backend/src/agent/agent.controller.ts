@@ -1,9 +1,9 @@
-// backend/src/agent/agent.controller.ts
-
 import {
   Controller,
   Post,
   Get,
+  Put,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -14,7 +14,24 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ExecutionEngineService } from './execution-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { StartExecutionDto, ApprovalResponseDto } from '../shared/dto/execution.dto';
+import {
+  StartExecutionDto,
+  ExecuteGoalDto,
+  ParseGoalDto,
+  NaturalLanguageCommandDto,
+  CreateScheduleDto,
+  ApprovalResponseDto,
+} from '../shared/dto/execution.dto';
+
+// New services
+import { GoalUnderstandingService } from './goal-understanding.service';
+import { MultiAgentCoordinatorService } from './multi-agent-coordinator.service';
+import { TaskReplayService } from './task-replay.service';
+import { ScheduledTaskService } from './scheduled-task.service';
+import { ApprovalService } from './approval.service';
+import { ExecutionMemoryService } from './execution-memory.service';
+import { UserProfileMemoryService } from './user-profile-memory.service';
+import { SkillRegistryService } from './skill-registry.service';
 
 @Controller('agent')
 @UseGuards(JwtAuthGuard)
@@ -22,7 +39,73 @@ export class AgentController {
   constructor(
     private executionEngine: ExecutionEngineService,
     private prisma: PrismaService,
+    private goalUnderstanding: GoalUnderstandingService,
+    private coordinator: MultiAgentCoordinatorService,
+    private replayService: TaskReplayService,
+    private scheduleService: ScheduledTaskService,
+    private approvalService: ApprovalService,
+    private executionMemory: ExecutionMemoryService,
+    private profileMemory: UserProfileMemoryService,
+    private skillRegistry: SkillRegistryService,
   ) {}
+
+  @Post('parse-goal')
+  async parseGoal(
+    @Body() dto: ParseGoalDto,
+    @Request() req: any,
+  ) {
+    const memories = await this.prisma.agentMemory.findMany({
+      where: { userId: req.user.id },
+      take: 5,
+    });
+    
+    const parsed = await this.goalUnderstanding.parseGoal(dto.goal, {
+      memories: memories.map((m: any) => m.content),
+    });
+
+    return parsed;
+  }
+
+  @Post('start')
+  async startAgentGoal(
+    @Body() dto: ExecuteGoalDto,
+    @Request() req: any,
+  ): Promise<{ sessionId: string; parsedGoal: any }> {
+    // 1. Learn/extract preferences implicitly
+    await this.executionMemory.extractAndSavePreferencesFromGoal(req.user.id, dto.goal);
+    await this.profileMemory.autoLearnFromUserInteraction(req.user.id, dto.goal);
+
+    // 2. Parse Goal
+    const parsedGoal = await this.goalUnderstanding.parseGoal(dto.goal);
+
+    // 3. Create a DB Task first
+    const task = await this.prisma.task.create({
+      data: {
+        userId: req.user.id,
+        title: parsedGoal.intent.slice(0, 100),
+        naturalLanguage: dto.goal,
+        status: 'PLANNING',
+        priority: 'MEDIUM',
+      },
+    });
+
+    // 4. Start execution engine
+    const sessionId = await this.executionEngine.startExecution(
+      req.user.id,
+      task.id,
+      dto.goal,
+      {
+        headless: true,
+        // Mode mapping
+        maxRetries: dto.mode === 'simulation' ? 0 : 3,
+      },
+    );
+
+    // 5. Orchestrate workers
+    await this.coordinator.orchestrateTask(sessionId, parsedGoal);
+
+    return { sessionId, parsedGoal };
+  }
 
   @Post('execute')
   async startExecution(
@@ -49,26 +132,50 @@ export class AgentController {
     });
 
     if (!approval) {
-      throw new HttpException('Approval not found', HttpStatus.NOT_FOUND);
+      throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
     }
 
-    const session = await this.prisma.executionSession.findUnique({
-      where: { id: approval.sessionId },
-    });
-
-    if (session?.userId !== req.user.id) {
-      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
-    }
-
-    await this.executionEngine.handleApprovalResponse(
-      dto.approvalRequestId,
-      dto.status,
-    );
-
+    await this.approvalService.handleResponse(dto.approvalRequestId, true, req.user.id);
     return { success: true };
   }
 
+  @Post('reject')
+  async rejectApproval(
+    @Body() dto: ApprovalResponseDto,
+    @Request() req: any,
+  ): Promise<{ success: boolean }> {
+    const approval = await this.prisma.approvalRequest.findUnique({
+      where: { id: dto.approvalRequestId },
+    });
+
+    if (!approval) {
+      throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
+    }
+
+    await this.approvalService.handleResponse(dto.approvalRequestId, false, req.user.id);
+    return { success: true };
+  }
+
+  @Post('session/:sessionId/interrupt')
+  @Post(':sessionId/interrupt')
+  async interruptSession(
+    @Param('sessionId') sessionId: string,
+    @Body() dto: NaturalLanguageCommandDto,
+    @Request() req: any,
+  ): Promise<{ success: boolean; feedback: string }> {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session || session.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+
+    return this.coordinator.handleNaturalLanguageControl(sessionId, dto.command);
+  }
+
   @Post('session/:sessionId/pause')
+  @Post(':sessionId/pause')
   async pauseSession(
     @Param('sessionId') sessionId: string,
     @Request() req: any,
@@ -86,6 +193,7 @@ export class AgentController {
   }
 
   @Post('session/:sessionId/resume')
+  @Post(':sessionId/resume')
   async resumeSession(
     @Param('sessionId') sessionId: string,
     @Request() req: any,
@@ -103,6 +211,9 @@ export class AgentController {
   }
 
   @Post('session/:sessionId/cancel')
+  @Post(':sessionId/cancel')
+  @Post(':sessionId/stop')
+  @Post('session/:sessionId/stop')
   async cancelSession(
     @Param('sessionId') sessionId: string,
     @Request() req: any,
@@ -139,8 +250,28 @@ export class AgentController {
     return session;
   }
 
-  @Get('session/:sessionId/steps')
-  async getSessionSteps(
+  @Get('replay/:id')
+  @Get('session/:sessionId/replay')
+  async getSessionReplay(
+    @Param('id') id: string,
+    @Param('sessionId') sessionId: string,
+    @Request() req: any,
+  ) {
+    const sId = id || sessionId;
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sId },
+    });
+
+    if (!session || session.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+
+    const replayData = await this.replayService.getReplayData(sId);
+    return { replay: replayData };
+  }
+
+  @Get('session/:sessionId/timeline')
+  async getSessionTimeline(
     @Param('sessionId') sessionId: string,
     @Request() req: any,
   ) {
@@ -152,12 +283,7 @@ export class AgentController {
       throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
     }
 
-    const plan = session.plan as any;
-    return {
-      steps: plan?.steps || [],
-      currentStepIndex: session.currentStepIndex,
-      totalSteps: session.totalSteps,
-    };
+    return this.replayService.getSessionTimeline(sessionId);
   }
 
   @Get('history')
@@ -187,5 +313,79 @@ export class AgentController {
     });
 
     return memories;
+  }
+
+  // ─── Scheduled Tasks CRUD ────────────────────────────────
+
+  @Get('schedules')
+  async getSchedules(@Request() req: any) {
+    return this.prisma.schedule.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  @Post('schedules')
+  async createSchedule(
+    @Body() dto: CreateScheduleDto,
+    @Request() req: any,
+  ) {
+    return this.scheduleService.createSchedule(
+      req.user.id,
+      dto.name,
+      dto.cronExpression,
+      dto.goal,
+      dto.config || {},
+    );
+  }
+
+  @Put('schedules/:id')
+  async updateSchedule(
+    @Param('id') id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    const schedule = await this.prisma.schedule.findUnique({
+      where: { id },
+    });
+
+    if (!schedule || schedule.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+
+    return this.scheduleService.updateSchedule(id, body);
+  }
+
+  @Delete('schedules/:id')
+  async deleteSchedule(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    const schedule = await this.prisma.schedule.findUnique({
+      where: { id },
+    });
+
+    if (!schedule || schedule.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+
+    await this.scheduleService.deleteSchedule(id);
+    return { success: true };
+  }
+
+  @Get('profile')
+  async getProfile(@Request() req: any) {
+    return this.profileMemory.getProfileCard(req.user.id);
+  }
+
+  @Post('profile')
+  async saveProfile(@Request() req: any, @Body() body: any) {
+    await this.profileMemory.saveProfileCard(req.user.id, body);
+    return { success: true };
+  }
+
+  @Get('skills')
+  async getSkills() {
+    return this.skillRegistry.listSkills();
   }
 }

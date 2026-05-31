@@ -79,7 +79,7 @@ export class AgentService {
 
   async getStepResults(executionId: string): Promise<unknown[]> {
     const steps = await this.executionService.getExecutionSteps(executionId);
-    return steps.map((s) => ({
+    return steps.map((s: any) => ({
       success: s.status === StepStatus.COMPLETED,
       output: s.output,
       action: s.action,

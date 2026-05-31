@@ -1,6 +1,7 @@
 // backend/src/agent/browser-agent.service.ts
 
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import * as fs from 'fs';
 import { ConfigService } from '@nestjs/config';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
@@ -10,6 +11,7 @@ import {
   DEFAULT_BROWSER_CONFIG,
   BrowserAction,
 } from '../shared/interfaces/agent.interfaces';
+import { BrowserSessionService } from './browser-session.service';
 
 puppeteer.use(StealthPlugin());
 
@@ -28,7 +30,10 @@ export class BrowserAgentService implements OnModuleDestroy {
   private readonly logger = new Logger(BrowserAgentService.name);
   private sessions = new Map<string, BrowserSession>();
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private sessionService: BrowserSessionService,
+  ) {}
 
   async onModuleDestroy() {
     for (const [id, session] of this.sessions) {
@@ -49,45 +54,25 @@ export class BrowserAgentService implements OnModuleDestroy {
 
     this.logger.log(`Creating browser session: ${sessionId}`);
 
-    const launchArgs = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      `--window-size=${mergedConfig.viewport.width},${mergedConfig.viewport.height}`,
-    ];
-
-    if (mergedConfig.proxy) {
-      launchArgs.push(`--proxy-server=${mergedConfig.proxy.server}`);
-    }
-
-    const browser = await puppeteer.launch({
+    const userId = (config as any).userId || 'system';
+    
+    // Delegate browser launch to BrowserSessionService
+    const launchSession = await this.sessionService.createSession(sessionId, userId, {
       headless: mergedConfig.headless,
-      args: launchArgs,
-      defaultViewport: mergedConfig.viewport,
+      width: mergedConfig.viewport.width,
+      height: mergedConfig.viewport.height,
     });
 
-    const page = await browser.newPage();
-
+    const page = launchSession.pages[launchSession.activePageIndex];
     if (mergedConfig.userAgent) {
       await page.setUserAgent(mergedConfig.userAgent);
-    }
-
-    await page.setViewport(mergedConfig.viewport);
-
-    if (mergedConfig.proxy?.username) {
-      await page.authenticate({
-        username: mergedConfig.proxy.username,
-        password: mergedConfig.proxy.password || '',
-      });
     }
 
     await this.injectAntiDetection(page);
 
     const session: BrowserSession = {
       id: sessionId,
-      browser,
+      browser: launchSession.browser,
       page,
       config: mergedConfig,
       isActive: true,
@@ -107,8 +92,7 @@ export class BrowserAgentService implements OnModuleDestroy {
 
     try {
       session.isActive = false;
-      await session.page.close().catch(() => {});
-      await session.browser.close().catch(() => {});
+      await this.sessionService.closeSession(sessionId);
       this.sessions.delete(sessionId);
       this.logger.log(`Browser session closed: ${sessionId}`);
     } catch (error) {
@@ -276,6 +260,407 @@ export class BrowserAgentService implements OnModuleDestroy {
     } catch (error: any) {
       this.logger.error(`Action failed [${action}] on session ${sessionId}: ${error.message}`);
       return { success: false, error: error.message };
+    }
+  }
+
+  async executeSkill(
+    sessionId: string,
+    skillName: string,
+    args: any,
+  ): Promise<{
+    success: boolean;
+    screenshot: string | null;
+    data?: any;
+    requiresApproval?: boolean;
+    error?: string;
+  }> {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.isActive) {
+      return { success: false, screenshot: null, error: 'Session not found or inactive' };
+    }
+
+    session.lastActivityAt = new Date();
+    const page = session.page;
+    this.logger.log(`Executing Skill [${skillName}] with args: ${JSON.stringify(args)}`);
+
+    try {
+      let success = false;
+      let data: any = undefined;
+      let error: string | undefined = undefined;
+
+      switch (skillName) {
+        case 'open_site': {
+          const { url } = args;
+          await page.goto(url, {
+            waitUntil: 'networkidle2',
+            timeout: session.config.timeout,
+          });
+          success = true;
+          data = { url: page.url() };
+          break;
+        }
+
+        case 'search_google': {
+          const { query } = args;
+          await page.goto('https://www.google.com', {
+            waitUntil: 'networkidle2',
+            timeout: session.config.timeout,
+          });
+          
+          let searchSelector = 'textarea[name="q"]';
+          try {
+            await page.waitForSelector(searchSelector, { visible: true, timeout: 5000 });
+          } catch {
+            searchSelector = 'input[name="q"]';
+            await page.waitForSelector(searchSelector, { visible: true, timeout: 5000 });
+          }
+
+          await this.safeType(page, searchSelector, query);
+          await page.keyboard.press('Enter');
+          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+          success = true;
+          break;
+        }
+
+        case 'click_element': {
+          const { selector } = args;
+          await this.safeClick(page, selector);
+          success = true;
+          break;
+        }
+
+        case 'fill_input': {
+          const { selector, text } = args;
+          
+          const isBlockedInput = await page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return { blocked: false, type: '' };
+            const type = (el.getAttribute('type') || '').toLowerCase();
+            const name = (el.getAttribute('name') || '').toLowerCase();
+            const id = (el.getAttribute('id') || '').toLowerCase();
+            const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+            const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+            const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+
+            // Heuristics for password
+            if (
+              type === 'password' ||
+              name.includes('password') ||
+              id.includes('password') ||
+              autocomplete.includes('password')
+            ) {
+              return { blocked: true, type: 'password' };
+            }
+
+            // Heuristics for OTP/verification code
+            const otpKeywords = ['otp', 'one-time', 'verification', 'code', 'security-code', 'passcode', '2fa', 'mfa'];
+            if (
+              otpKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw) || ariaLabel.includes(kw))
+            ) {
+              return { blocked: true, type: 'otp' };
+            }
+
+            // Heuristics for Credit Card number, CVV, Expiry
+            const ccKeywords = [
+              'card-number', 'cardnumber', 'creditcard', 'debitcard', 'cc-num', 'ccnum', 'cvv', 'cvc', 'security-code', 
+              'expiry', 'expiration', 'cc-exp', 'ccexp'
+            ];
+            if (
+              ccKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw) || ariaLabel.includes(kw))
+            ) {
+              return { blocked: true, type: 'payment' };
+            }
+
+            return { blocked: false, type: '' };
+          }, selector);
+
+          if (isBlockedInput.blocked) {
+            error = `Auto-filling sensitive ${isBlockedInput.type} fields is blocked by safety policy.`;
+            this.logger.warn(`Security Warning: Blocked auto-fill of sensitive ${isBlockedInput.type} field in selector: ${selector}`);
+            return {
+              success: false,
+              screenshot: await this.takeScreenshot(sessionId),
+              requiresApproval: true,
+              error,
+            };
+          }
+
+          await this.safeType(page, selector, text);
+          success = true;
+          break;
+        }
+
+        case 'scroll_page': {
+          const { pixels } = args;
+          const scrollAmount = parseInt(String(pixels || '500'), 10);
+          await page.evaluate((amount) => window.scrollBy(0, amount), scrollAmount);
+          success = true;
+          break;
+        }
+
+        case 'wait_for_element': {
+          const { selector, timeoutMs } = args;
+          const timeout = parseInt(String(timeoutMs || '10000'), 10);
+          await page.waitForSelector(selector, { visible: true, timeout });
+          success = true;
+          break;
+        }
+
+        case 'extract_text': {
+          const { selector } = args;
+          let extractedText = '';
+          if (selector) {
+            extractedText = await page.$eval(selector, (el) => el.textContent?.trim() || '');
+          } else {
+            extractedText = await page.evaluate(() => document.body.textContent?.trim() || '');
+          }
+          success = true;
+          data = { text: extractedText };
+          break;
+        }
+
+        case 'detect_login': {
+          const loginDetection = await page.evaluate(() => {
+            const textContent = document.body.textContent?.toLowerCase() || '';
+            const inputs = Array.from(document.querySelectorAll('input'));
+            const passwordInputs = inputs.filter(i => i.getAttribute('type') === 'password');
+            const emailInputs = inputs.filter(i => {
+              const type = i.getAttribute('type') || '';
+              const name = i.getAttribute('name') || '';
+              return type === 'email' || name.includes('email') || name.includes('username');
+            });
+
+            let confidence = 0.0;
+            let reasons: string[] = [];
+
+            if (passwordInputs.length > 0) {
+              confidence += 0.5;
+              reasons.push('Password input element found');
+            }
+            if (emailInputs.length > 0) {
+              confidence += 0.3;
+              reasons.push('Email or username input element found');
+            }
+
+            const loginKeywords = [
+              'sign in', 'log in', 'signin', 'login', 'continue with google',
+              'google login', 'sign into', 'sign-in', 'log-in'
+            ];
+
+            const foundKeyword = loginKeywords.find(kw => textContent.includes(kw));
+            if (foundKeyword) {
+              confidence += 0.2;
+              reasons.push(`Login keyword found: "${foundKeyword}"`);
+            }
+
+            const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'));
+            const loginButtons = buttons.filter(btn => {
+              const btnText = btn.textContent?.toLowerCase() || '';
+              const btnVal = (btn as any).value?.toLowerCase() || '';
+              return loginKeywords.some(kw => btnText.includes(kw) || btnVal.includes(kw));
+            });
+
+            if (loginButtons.length > 0) {
+              confidence += 0.2;
+              reasons.push('Login/Sign-in button found');
+            }
+
+            confidence = Math.min(confidence, 1.0);
+            return { detected: confidence >= 0.5, confidence, reasons };
+          });
+
+          success = true;
+          data = loginDetection;
+          break;
+        }
+
+        case 'detect_payment': {
+          const paymentDetection = await page.evaluate(() => {
+            const textContent = document.body.textContent?.toLowerCase() || '';
+            const inputs = Array.from(document.querySelectorAll('input'));
+            
+            let confidence = 0.0;
+            let reasons: string[] = [];
+
+            const ccKeywords = ['card number', 'cardnumber', 'credit card', 'debit card', 'visa', 'mastercard', 'amex'];
+            const cvvKeywords = ['cvv', 'cvc', 'security code', 'card security'];
+            const expiryKeywords = ['exp', 'expiry', 'expiration'];
+            const paymentKeywords = ['payment', 'checkout', 'pay now', 'place order', 'buy now', 'order total'];
+
+            const hasCCInput = inputs.some(i => {
+              const name = (i.getAttribute('name') || '').toLowerCase();
+              const id = (i.getAttribute('id') || '').toLowerCase();
+              const placeholder = (i.getAttribute('placeholder') || '').toLowerCase();
+              const autocomplete = (i.getAttribute('autocomplete') || '').toLowerCase();
+              
+              return ccKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw) || autocomplete.includes(kw));
+            });
+
+            const hasCVVInput = inputs.some(i => {
+              const name = (i.getAttribute('name') || '').toLowerCase();
+              const id = (i.getAttribute('id') || '').toLowerCase();
+              const placeholder = (i.getAttribute('placeholder') || '').toLowerCase();
+              
+              return cvvKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw));
+            });
+
+            const hasExpiryInput = inputs.some(i => {
+              const name = (i.getAttribute('name') || '').toLowerCase();
+              const id = (i.getAttribute('id') || '').toLowerCase();
+              const placeholder = (i.getAttribute('placeholder') || '').toLowerCase();
+              
+              return expiryKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw));
+            });
+
+            if (hasCCInput) {
+              confidence += 0.5;
+              reasons.push('Credit/debit card number input detected');
+            }
+            if (hasCVVInput) {
+              confidence += 0.2;
+              reasons.push('CVV/security code input detected');
+            }
+            if (hasExpiryInput) {
+              confidence += 0.2;
+              reasons.push('Expiry date input detected');
+            }
+
+            const foundKeyword = paymentKeywords.find(kw => textContent.includes(kw));
+            if (foundKeyword) {
+              confidence += 0.2;
+              reasons.push(`Payment keyword found: "${foundKeyword}"`);
+            }
+
+            confidence = Math.min(confidence, 1.0);
+            return { detected: confidence >= 0.5, confidence, reasons };
+          });
+
+          success = true;
+          data = paymentDetection;
+          break;
+        }
+
+        case 'detect_otp': {
+          const otpDetection = await page.evaluate(() => {
+            const textContent = document.body.textContent?.toLowerCase() || '';
+            const inputs = Array.from(document.querySelectorAll('input'));
+
+            let confidence = 0.0;
+            let reasons: string[] = [];
+
+            const otpKeywords = ['otp', 'one-time', 'one time', 'verification code', 'enter code', 'sms code', 'verify phone', 'verify email'];
+            
+            const hasOTPInput = inputs.some(i => {
+              const name = (i.getAttribute('name') || '').toLowerCase();
+              const id = (i.getAttribute('id') || '').toLowerCase();
+              const placeholder = (i.getAttribute('placeholder') || '').toLowerCase();
+              
+              return otpKeywords.some(kw => name.includes(kw) || id.includes(kw) || placeholder.includes(kw));
+            });
+
+            if (hasOTPInput) {
+              confidence += 0.6;
+              reasons.push('OTP/Verification code input detected');
+            }
+
+            const foundKeyword = otpKeywords.find(kw => textContent.includes(kw));
+            if (foundKeyword) {
+              confidence += 0.3;
+              reasons.push(`OTP keyword found: "${foundKeyword}"`);
+            }
+
+            confidence = Math.min(confidence, 1.0);
+            return { detected: confidence >= 0.5, confidence, reasons };
+          });
+
+          success = true;
+          data = otpDetection;
+          break;
+        }
+
+        case 'detect_captcha': {
+          const captchaDetection = await page.evaluate(() => {
+            const textContent = document.body.textContent?.toLowerCase() || '';
+            const iframes = Array.from(document.querySelectorAll('iframe'));
+            
+            let confidence = 0.0;
+            let reasons: string[] = [];
+
+            const hasCaptchaIframe = iframes.some(iframe => {
+              const src = (iframe.getAttribute('src') || '').toLowerCase();
+              return (
+                src.includes('recaptcha') ||
+                src.includes('hcaptcha') ||
+                src.includes('arkoselabs') ||
+                src.includes('turnstile') ||
+                src.includes('challenges.cloudflare.com')
+              );
+            });
+
+            if (hasCaptchaIframe) {
+              confidence += 0.7;
+              reasons.push('CAPTCHA iframe (reCAPTCHA, hCaptcha, Turnstile) detected');
+            }
+
+            const captchaKeywords = ['captcha', 'recaptcha', 'hcaptcha', 'prove you are human', 'verify you are human', 'security check', 'robot check'];
+            const foundKeyword = captchaKeywords.find(kw => textContent.includes(kw));
+            if (foundKeyword) {
+              confidence += 0.2;
+              reasons.push(`CAPTCHA keyword found: "${foundKeyword}"`);
+            }
+
+            const selectorKeywords = ['.g-recaptcha', '#g-recaptcha', '#recaptcha', '.h-captcha', '#cf-turnstile', '.cf-turnstile'];
+            const hasSelector = selectorKeywords.some(sel => document.querySelector(sel) !== null);
+            if (hasSelector) {
+              confidence += 0.3;
+              reasons.push('CAPTCHA DOM container element found');
+            }
+
+            confidence = Math.min(confidence, 1.0);
+            return { detected: confidence >= 0.5, confidence, reasons };
+          });
+
+          success = true;
+          data = captchaDetection;
+          break;
+        }
+
+        case 'upload_file': {
+          const { selector, filePath } = args;
+          
+          if (!fs.existsSync(filePath)) {
+            error = `File not found on disk: ${filePath}`;
+            this.logger.warn(error);
+            return {
+              success: false,
+              screenshot: await this.takeScreenshot(sessionId),
+              error,
+            };
+          }
+
+          const fileInput = await page.waitForSelector(selector);
+          if (fileInput) {
+            await (fileInput as ElementHandle<HTMLInputElement>).uploadFile(filePath);
+            success = true;
+          } else {
+            error = `File input element not found for selector: ${selector}`;
+          }
+          break;
+        }
+
+        default:
+          return { success: false, screenshot: null, error: `Unknown skill: ${skillName}` };
+      }
+
+      const screenshot = await this.takeScreenshot(sessionId);
+      return { success, screenshot, data, error };
+    } catch (err: any) {
+      this.logger.error(`Skill failed [${skillName}] on session ${sessionId}: ${err.message}`);
+      return {
+        success: false,
+        screenshot: await this.takeScreenshot(sessionId),
+        error: err.message,
+      };
     }
   }
 

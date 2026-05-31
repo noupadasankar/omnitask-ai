@@ -6,6 +6,7 @@ export interface AgentPlan {
   steps: PlannedStep[];
   estimatedDuration: number; // seconds
   riskAssessment: RiskAssessment;
+  skillsUsed?: string[];
   metadata?: Record<string, any>;
 }
 
@@ -17,6 +18,7 @@ export interface PlannedStep {
   description: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   requiresApproval: boolean;
+  skillName?: string;
   fallback?: PlannedStep;
   waitCondition?: WaitCondition;
   validation?: StepValidation;

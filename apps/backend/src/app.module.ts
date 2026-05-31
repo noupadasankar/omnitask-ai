@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { PrismaModule } from './prisma/prisma.module';
 import { CacheModule } from './cache/cache.module';
@@ -29,6 +30,7 @@ import { AppService } from './app.service';
       expandVariables: true,
     }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
 
     PrismaModule,
     CacheModule,

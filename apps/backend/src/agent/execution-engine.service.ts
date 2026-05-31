@@ -18,6 +18,9 @@ import {
   WaitCondition,
 } from '../shared/interfaces/agent.interfaces';
 import { ApprovalStatus, RiskLevel, MemoryType } from '@prisma/client';
+import { ZomatoAdapter } from './domain-adapters/zomato-adapter.service';
+import { SwiggyAdapter } from './domain-adapters/swiggy-adapter.service';
+import { PuppeteerProvider } from './providers/puppeteer-provider.service';
 
 @Injectable()
 export class ExecutionEngineService implements OnModuleDestroy {
@@ -99,9 +102,16 @@ export class ExecutionEngineService implements OnModuleDestroy {
 
       const plan = await this.plannerAgent.createPlan(goal, {
         userPreferences: config,
+        userId: session.userId,
       });
 
       plan.taskId = session.taskId;
+
+      this.logger.log(`State Transition for session ${sessionId}: [PLANNING] ──> [RUNNING]`);
+      this.wsGateway.emitToSession(sessionId, 'execution:event', {
+        type: 'execution_state_changed',
+        data: { sessionId, oldState: 'planning', newState: 'executing' }
+      });
 
       await this.prisma.executionSession.update({
         where: { id: sessionId },
@@ -117,6 +127,12 @@ export class ExecutionEngineService implements OnModuleDestroy {
       // Step 2: Check policy
       const policyCheck = this.policyEngine.checkPlan(plan);
       if (!policyCheck.approved) {
+        this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [FAILED] (Policy Blocked)`);
+        this.wsGateway.emitToSession(sessionId, 'execution:event', {
+          type: 'execution_state_changed',
+          data: { sessionId, oldState: 'executing', newState: 'failed' }
+        });
+
         await this.prisma.executionSession.update({
           where: { id: sessionId },
           data: { status: 'FAILED', errorMessage: 'Plan blocked by policy engine' },
@@ -127,6 +143,52 @@ export class ExecutionEngineService implements OnModuleDestroy {
           blockedSteps: policyCheck.blockedSteps,
         });
         return;
+      }
+
+      // Check for structured Domain Adapter match first
+      const firstStep = plan.steps[0];
+      if (firstStep && firstStep.action === 'navigate' && firstStep.value) {
+        const url = firstStep.value;
+        const adapters = [new ZomatoAdapter(), new SwiggyAdapter()];
+        let matchedAdapter = null;
+
+        for (const adapter of adapters) {
+          if (adapter.matches(url)) {
+            matchedAdapter = adapter;
+            break;
+          }
+        }
+
+        if (matchedAdapter) {
+          this.logger.log(`Domain Adapter MATCHED for URL: "${url}". Launching dedicated structured navigator.`);
+          const provider = new PuppeteerProvider();
+          await provider.launch(sessionId, session.userId, { headless: config?.headless ?? true });
+          
+          this.wsGateway.emitToSession(sessionId, 'execution:event', {
+            type: 'agent:thinking',
+            data: { message: `Domain Adapter active. Navigating ${url} structurally.` },
+          });
+
+          const adapterResult = await matchedAdapter.executeGoal(provider, sessionId, goal);
+          await provider.close(sessionId);
+
+          await this.prisma.executionSession.update({
+            where: { id: sessionId },
+            data: {
+              status: adapterResult.success ? 'COMPLETED' : 'FAILED',
+              completedAt: new Date(),
+              errorMessage: adapterResult.error || null,
+            },
+          });
+
+          this.wsGateway.emitToSession(sessionId, 'execution:completed', {
+            status: adapterResult.success ? 'success' : 'failed',
+            reason: adapterResult.error,
+          });
+
+          this.activeSessions.delete(sessionId);
+          return;
+        }
       }
 
       // Step 3: Create browser session
@@ -280,13 +342,40 @@ export class ExecutionEngineService implements OnModuleDestroy {
       step.index,
     );
 
-    // Execute action
-    const result = await this.browserAgent.executeAction(
-      sessionId,
-      step.action,
-      step.target,
-      step.value,
-    );
+    // Execute action using execution skills if possible
+    let result: { success: boolean; screenshot?: string | null; error?: string; data?: any; requiresApproval?: boolean };
+    const skillMapping: Record<string, string> = {
+      navigate: 'open_site',
+      click: 'click_element',
+      type: 'fill_input',
+      scroll: 'scroll_page',
+      wait: 'wait_for_element',
+      extract_text: 'extract_text',
+      upload_file: 'upload_file'
+    };
+
+    const actionSkillName = skillMapping[step.action] || step.action;
+    
+    if (['open_site', 'search_google', 'click_element', 'fill_input', 'scroll_page', 'wait_for_element', 'extract_text', 'detect_login', 'detect_payment', 'detect_otp', 'upload_file'].includes(actionSkillName)) {
+      let args: any = {};
+      if (actionSkillName === 'open_site') args = { url: step.value };
+      else if (actionSkillName === 'search_google') args = { query: step.value };
+      else if (actionSkillName === 'click_element') args = { selector: step.target };
+      else if (actionSkillName === 'fill_input') args = { selector: step.target, text: step.value };
+      else if (actionSkillName === 'scroll_page') args = { pixels: parseInt(step.value || '500', 10) };
+      else if (actionSkillName === 'wait_for_element') args = { selector: step.target || step.value, timeoutMs: 10000 };
+      else if (actionSkillName === 'extract_text') args = { selector: step.target };
+      else if (actionSkillName === 'upload_file') args = { selector: step.target, filePath: step.value };
+      
+      result = await this.browserAgent.executeSkill(sessionId, actionSkillName, args);
+    } else {
+      result = await this.browserAgent.executeAction(
+        sessionId,
+        step.action,
+        step.target,
+        step.value,
+      );
+    }
 
     if (!result.success) {
       this.wsGateway.emitToSession(sessionId, 'step:failed', {
@@ -308,14 +397,14 @@ export class ExecutionEngineService implements OnModuleDestroy {
     );
 
     // Vision validation
-    const beforeAnalysis = await this.visionAgent.analyzeScreenshot(
-      beforeScreenshot || '',
+    const beforeAnalysis = beforeScreenshot ? await this.visionAgent.analyzeScreenshot(
+      beforeScreenshot,
       { currentStep: step, goal: plan.goal },
-    );
+    ) : null;
 
-    const validation = beforeAnalysis ? await this.visionAgent.validateStepCompletion(
-      beforeScreenshot || '',
-      afterScreenshot || '',
+    const validation = beforeAnalysis && beforeScreenshot && afterScreenshot ? await this.visionAgent.validateStepCompletion(
+      beforeScreenshot,
+      afterScreenshot,
       step,
     ) : null;
 
@@ -338,6 +427,99 @@ export class ExecutionEngineService implements OnModuleDestroy {
           return false;
         }
       } else {
+        return false;
+      }
+    }
+
+    // Post-Step Blocker check & Safety Pause
+    let isBlockerDetected = false;
+    let blockerReason = '';
+    let blockerType: 'WAITING_APPROVAL' | 'WAITING_OTP' = 'WAITING_APPROVAL';
+
+    // 1. Heuristic checks via page DOM skills
+    const loginStatus = await this.browserAgent.executeSkill(sessionId, 'detect_login', {});
+    const paymentStatus = await this.browserAgent.executeSkill(sessionId, 'detect_payment', {});
+    const otpStatus = await this.browserAgent.executeSkill(sessionId, 'detect_otp', {});
+    const captchaStatus = await this.browserAgent.executeSkill(sessionId, 'detect_captcha', {});
+
+    const isLogin = loginStatus.success && (loginStatus.data?.detected || loginStatus.data?.isLoginRequired);
+    const isPayment = paymentStatus.success && (paymentStatus.data?.detected || paymentStatus.data?.isPaymentDetected);
+    const isOtp = otpStatus.success && (otpStatus.data?.detected || otpStatus.data?.isOtpDetected);
+    const isCaptcha = captchaStatus.success && (captchaStatus.data?.detected || captchaStatus.data?.isCaptchaDetected);
+
+    if (isLogin) {
+      isBlockerDetected = true;
+      blockerReason = `Login form detected: ${loginStatus.data.reasons.join(', ')}`;
+      blockerType = 'WAITING_APPROVAL';
+    } else if (isPayment) {
+      isBlockerDetected = true;
+      blockerReason = `Payment or checkout flow detected: ${paymentStatus.data.reasons.join(', ')}`;
+      blockerType = 'WAITING_APPROVAL';
+    } else if (isOtp) {
+      isBlockerDetected = true;
+      blockerReason = `One-time password or SMS verification code detected: ${otpStatus.data.reasons.join(', ')}`;
+      blockerType = 'WAITING_OTP';
+    } else if (isCaptcha) {
+      isBlockerDetected = true;
+      blockerReason = `CAPTCHA verification detected: ${captchaStatus.data.reasons.join(', ')}`;
+      blockerType = 'WAITING_APPROVAL';
+    }
+
+    // 2. Vision Blocker checks
+    if (!isBlockerDetected && afterScreenshot) {
+      const visionBlocker = await this.visionAgent.detectBlockers(afterScreenshot);
+      if (visionBlocker.hasBlocker) {
+        isBlockerDetected = true;
+        blockerReason = visionBlocker.description || `Page blocker detected: ${visionBlocker.blockerType}`;
+        if (visionBlocker.blockerType === 'captcha') {
+          blockerReason = `CAPTCHA verification detected. Please solve the CAPTCHA in the browser window.`;
+        }
+        blockerType = 'WAITING_APPROVAL';
+      }
+    }
+
+    // 3. Validation confidence check
+    if (validation && validation.confidence < 0.8) {
+      isBlockerDetected = true;
+      blockerReason = `Validation confidence is low (${validation.confidence}). Please verify the page state.`;
+      blockerType = 'WAITING_APPROVAL';
+    }
+
+    // Trigger safety auto-pause if a blocker is found!
+    if (isBlockerDetected) {
+      this.logger.warn(`Safety Interception Activated! Reason: ${blockerReason}`);
+      
+      // Broadcast log to websocket
+      this.wsGateway.emitToSession(sessionId, 'execution:event', {
+        type: 'log:warn',
+        data: { source: 'SafetyEngine', message: `Safety Auto-Pause: ${blockerReason}` }
+      });
+
+      // Pause the stream / engine execution by waiting for user approval
+      const mockStep = {
+        ...step,
+        description: `Safety Block: ${blockerReason}`,
+        requiresApproval: true,
+      };
+
+      const userRiskLevel = blockerReason.toLowerCase().includes('payment') ? 'CRITICAL' : 'HIGH';
+      
+      this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [${blockerType}]`);
+      this.wsGateway.emitToSession(sessionId, 'execution:event', {
+        type: 'execution_state_changed',
+        data: { sessionId, oldState: 'executing', newState: blockerType.toLowerCase() }
+      });
+
+      const approved = await this.requestApproval(
+        sessionId,
+        mockStep,
+        userRiskLevel,
+      );
+
+      if (!approved) {
+        this.wsGateway.emitToSession(sessionId, 'step:denied', {
+          stepIndex: step.index,
+        });
         return false;
       }
     }
@@ -479,6 +661,10 @@ export class ExecutionEngineService implements OnModuleDestroy {
     );
 
     try {
+      const session = await this.prisma.executionSession.findUnique({
+        where: { id: sessionId },
+      });
+
       const screenshotAnalysis = screenshot
         ? await this.visionAgent.analyzeScreenshot(screenshot, {
             goal: originalPlan.goal,
@@ -490,6 +676,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
         failedStepIndex,
         error,
         screenshotAnalysis?.currentState,
+        { userId: session?.userId },
       );
 
       const updatedPlan: AgentPlan = {
@@ -582,6 +769,13 @@ export class ExecutionEngineService implements OnModuleDestroy {
 
   async pauseExecution(sessionId: string): Promise<void> {
     this.logger.log(`Pausing execution: ${sessionId}`);
+    
+    this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [PAUSED]`);
+    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+      type: 'execution_state_changed',
+      data: { sessionId, oldState: 'executing', newState: 'paused' }
+    });
+
     this.screenshotStreamer.stopStreaming(sessionId);
     await this.prisma.executionSession.update({
       where: { id: sessionId },
@@ -592,6 +786,13 @@ export class ExecutionEngineService implements OnModuleDestroy {
 
   async resumeExecution(sessionId: string): Promise<void> {
     this.logger.log(`Resuming execution: ${sessionId}`);
+
+    this.logger.log(`State Transition for session ${sessionId}: [PAUSED] ──> [RUNNING]`);
+    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+      type: 'execution_state_changed',
+      data: { sessionId, oldState: 'paused', newState: 'executing' }
+    });
+
     this.screenshotStreamer.startStreaming(sessionId, 500);
     await this.prisma.executionSession.update({
       where: { id: sessionId },
@@ -607,6 +808,12 @@ export class ExecutionEngineService implements OnModuleDestroy {
     if (state) {
       state.aborting = true;
     }
+
+    this.logger.log(`State Transition for session ${sessionId}: [RUNNING/PAUSED] ──> [CANCELLED]`);
+    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+      type: 'execution_state_changed',
+      data: { sessionId, oldState: 'executing', newState: 'failed' }
+    });
 
     this.screenshotStreamer.stopStreaming(sessionId);
     await this.browserAgent.closeSession(sessionId);

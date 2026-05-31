@@ -54,4 +54,11 @@ export class AuthController {
   getProfile(@Req() req: AuthenticatedRequest) {
     return req.user;
   }
+
+  // 👤 Current User details (protected, mapped to frontend /auth/me)
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  async getMe(@Req() req: AuthenticatedRequest) {
+    return this.authService.getUserProfile(req.user.id);
+  }
 }
