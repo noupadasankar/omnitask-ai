@@ -32,7 +32,7 @@ export function ExecutionReplay({ frames: initialFrames = [] }: ExecutionReplayP
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const playbackIntervalRef = useRef<NodeJS.Timeout>();
+  const playbackIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Collect frames as they come in

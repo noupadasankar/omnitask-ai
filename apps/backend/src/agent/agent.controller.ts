@@ -28,10 +28,15 @@ import { GoalUnderstandingService } from './goal-understanding.service';
 import { MultiAgentCoordinatorService } from './multi-agent-coordinator.service';
 import { TaskReplayService } from './task-replay.service';
 import { ScheduledTaskService } from './scheduled-task.service';
-import { ApprovalService } from './approval.service';
 import { ExecutionMemoryService } from './execution-memory.service';
 import { UserProfileMemoryService } from './user-profile-memory.service';
 import { SkillRegistryService } from './skill-registry.service';
+// ─── COS Telemetry ─────────────────────────────────────────────────
+import { WorldStateService } from './world-state.service';
+import { DriftDetectorService } from './drift-detector.service';
+import { AgentRegistryService } from '../agent-registry/agent-registry.service';
+import { PreferenceMemoryService, UserDomainPreferences } from '../memory/preferences/preference-memory.service';
+import { WorkerEventRelayService } from '../websocket/worker-event-relay.service';
 
 @Controller('agent')
 @UseGuards(JwtAuthGuard)
@@ -43,11 +48,16 @@ export class AgentController {
     private coordinator: MultiAgentCoordinatorService,
     private replayService: TaskReplayService,
     private scheduleService: ScheduledTaskService,
-    private approvalService: ApprovalService,
     private executionMemory: ExecutionMemoryService,
     private profileMemory: UserProfileMemoryService,
     private skillRegistry: SkillRegistryService,
-  ) {}
+    // ─── COS Telemetry ─────────────────────────────────────────────
+    private worldStateService: WorldStateService,
+    private driftDetectorService: DriftDetectorService,
+    private agentRegistry: AgentRegistryService,
+    private preferenceMemory: PreferenceMemoryService,
+    private workerRelay: WorkerEventRelayService,
+  ) { }
 
   @Post('parse-goal')
   async parseGoal(
@@ -58,12 +68,19 @@ export class AgentController {
       where: { userId: req.user.id },
       take: 5,
     });
-    
+
     const parsed = await this.goalUnderstanding.parseGoal(dto.goal, {
       memories: memories.map((m: any) => m.content),
     });
 
     return parsed;
+  }
+
+  @Post('refine-goal')
+  async refineGoal(
+    @Body() dto: { currentGoal: any; userFeedback: string },
+  ) {
+    return this.goalUnderstanding.refineGoal(dto.currentGoal, dto.userFeedback);
   }
 
   @Post('start')
@@ -77,6 +94,16 @@ export class AgentController {
 
     // 2. Parse Goal
     const parsedGoal = await this.goalUnderstanding.parseGoal(dto.goal);
+    if (dto.preferredSites?.length) {
+      parsedGoal.preferredWebsites = Array.from(
+        new Set([...(parsedGoal.preferredWebsites || []), ...dto.preferredSites]),
+      );
+    }
+
+    // Ambiguity Gate Check: if goal is too vague, return questions before creating task or session
+    if (parsedGoal.ambiguityScore > 0.6) {
+      return { sessionId: '', parsedGoal };
+    }
 
     // 3. Create a DB Task first
     const task = await this.prisma.task.create({
@@ -89,7 +116,7 @@ export class AgentController {
       },
     });
 
-    // 4. Start execution engine
+    // 4. Start execution engine (pass parsedGoal for StrategyMemory + VerifierAgent)
     const sessionId = await this.executionEngine.startExecution(
       req.user.id,
       task.id,
@@ -98,7 +125,13 @@ export class AgentController {
         headless: true,
         // Mode mapping
         maxRetries: dto.mode === 'simulation' ? 0 : 3,
+        profile: dto.profile,
+        // Automation-gate inputs — decide whether the browser may auto-launch.
+        mode: dto.mode,
+        allowPayments: dto.allowPayments,
+        allowLogin: dto.allowLogin,
       },
+      parsedGoal,
     );
 
     // 5. Orchestrate workers
@@ -135,7 +168,15 @@ export class AgentController {
       throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
     }
 
-    await this.approvalService.handleResponse(dto.approvalRequestId, true, req.user.id);
+    await this.executionEngine.handleApprovalResponse(
+      dto.approvalRequestId,
+      'APPROVED',
+    );
+    await this.workerRelay.setApprovalDecision(
+      approval.sessionId,
+      approval.stepIndex,
+      'APPROVED',
+    );
     return { success: true };
   }
 
@@ -152,7 +193,15 @@ export class AgentController {
       throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
     }
 
-    await this.approvalService.handleResponse(dto.approvalRequestId, false, req.user.id);
+    await this.executionEngine.handleApprovalResponse(
+      dto.approvalRequestId,
+      'DENIED',
+    );
+    await this.workerRelay.setApprovalDecision(
+      approval.sessionId,
+      approval.stepIndex,
+      'DENIED',
+    );
     return { success: true };
   }
 
@@ -338,7 +387,10 @@ export class AgentController {
       dto.config || {},
     );
   }
-
+  @Post('clarify')
+  async clarifyGoal(@Body('goal') goal: string) {
+    return this.goalUnderstanding.parseGoal(goal);
+  }
   @Put('schedules/:id')
   async updateSchedule(
     @Param('id') id: string,
@@ -387,5 +439,95 @@ export class AgentController {
   @Get('skills')
   async getSkills() {
     return this.skillRegistry.listSkills();
+  }
+
+  /** Agent Registry + Plugin marketplace foundation */
+  @Get('registry')
+  async getRegistry() {
+    return {
+      agents: this.agentRegistry.listAgents(),
+      plugins: this.agentRegistry.listPlugins(),
+    };
+  }
+
+  /** Learned domain preferences (job sites, food apps, etc.) */
+  @Get('preferences')
+  async getPreferences(@Request() req: any) {
+    return this.preferenceMemory.getPreferences(req.user.id);
+  }
+
+  @Put('preferences')
+  async savePreferences(
+    @Request() req: any,
+    @Body() body: UserDomainPreferences,
+  ) {
+    await this.preferenceMemory.savePreferences(req.user.id, body);
+    return { success: true };
+  }
+
+  // ─── COS Telemetry Endpoints ──────────────────────────────────
+
+  /**
+   * Returns the live World State Object (WSO) for a running session.
+   * The frontend CognitivHUD polls this to hydrate on reconnect.
+   */
+  @Get('session/:sessionId/wso')
+  async getWorldState(
+    @Param('sessionId') sessionId: string,
+    @Request() req: any,
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session || session.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+    const wso = this.worldStateService.getState(sessionId);
+    return {
+      sessionId,
+      wso: wso
+        ? {
+          stateConfidence: wso.stateConfidence,
+          beliefSourceConsensus: wso.beliefSourceConsensus,
+          version: wso.version,
+          belief: Object.fromEntries(
+            Object.entries(wso.belief).map(([k, v]) => [
+              k,
+              { value: v.value, confidence: v.sourceConfidence, source: v.source },
+            ])
+          ),
+        }
+        : null,
+    };
+  }
+
+  /**
+   * Returns aggregated COS diagnostics for a session:
+   * execution profile, session metadata, and current wso confidence.
+   */
+  @Get('session/:sessionId/diagnostics')
+  async getSessionDiagnostics(
+    @Param('sessionId') sessionId: string,
+    @Request() req: any,
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sessionId },
+    });
+    if (!session || session.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+    const wso = this.worldStateService.getState(sessionId);
+    const meta = session.metadata as Record<string, any> | null;
+    return {
+      sessionId,
+      profile: meta?.profile ?? 'balanced',
+      goal: meta?.goal ?? '',
+      status: session.status,
+      currentStepIndex: session.currentStepIndex,
+      totalSteps: session.totalSteps,
+      wsoConfidence: wso?.stateConfidence ?? null,
+      beliefConsensus: wso?.beliefSourceConsensus ?? null,
+      wsoVersion: wso?.version ?? null,
+    };
   }
 }

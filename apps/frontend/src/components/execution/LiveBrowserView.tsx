@@ -1,14 +1,17 @@
+//apps/frontend/src/components/execution/LiveBrowserView.tsx
 'use client';
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Monitor, ShieldAlert, Maximize2, Minimize2, RefreshCw, Camera, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ScreenshotFrame } from '@/types/agent';
+import type { ScreenshotFrame, ExecutionState } from '@/types/agent';
 
 interface LiveBrowserViewProps {
   currentScreenshot: ScreenshotFrame | null;
   phase: string;
+  /** Authoritative derived execution state — for precise pre-frame labels. */
+  executionState?: ExecutionState | null;
   children?: React.ReactNode;
 }
 
@@ -18,7 +21,7 @@ interface CursorTrail {
   y: number;
 }
 
-export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrowserViewProps) {
+export function LiveBrowserView({ currentScreenshot, phase, executionState, children }: LiveBrowserViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -28,9 +31,7 @@ export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrow
   const lastCursorRef = useRef<{ x: number; y: number } | null>(null);
   const trailIdRef = useRef(0);
 
-  const currentUrl = currentScreenshot?.sessionId
-    ? `https://session-${currentScreenshot.sessionId.slice(0, 8)}.omnitask.local`
-    : 'chrome://newtab';
+  const currentUrl = currentScreenshot?.url || 'chrome://newtab';
 
   const isExecuting = phase === 'executing';
   const isLive = isExecuting && currentScreenshot;
@@ -146,7 +147,14 @@ export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrow
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const showPlaceholder = !currentScreenshot || phase === 'idle' || phase === 'planning' || phase === 'parsing';
+  // Show the live canvas as soon as a frame exists. Only fall back to the
+  // placeholder before any frame has arrived (idle / goal parsing / planning /
+  // awaiting the launch gate — the browser is intentionally not open yet).
+  const showPlaceholder = !currentScreenshot || phase === 'idle' || phase === 'parsing';
+  const isAwaitingApproval = phase === 'waiting_approval';
+  // The browser runtime is launching Chromium but no frame has streamed yet.
+  const isLaunching =
+    executionState === 'BROWSER_INITIALIZING' || executionState === 'READY';
 
   return (
     <div
@@ -209,13 +217,15 @@ export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrow
         </div>
       </div>
 
-      {/* Viewport */}
-      <div className="flex-1 flex items-center justify-center overflow-hidden rounded-2xl bg-black/40 border border-white/5 relative p-2 min-h-[300px] crt-lines">
+      {/* Viewport — FIXED 16:9 box. Placeholder and live canvas both fill this
+          exact area absolutely, so the box never resizes between states and the
+          chrome header above stays put. */}
+      <div className="relative w-full aspect-video overflow-hidden rounded-2xl bg-black/40 border border-white/5 crt-lines">
         {showPlaceholder ? (
           children ? (
-            children
+            <div className="absolute inset-0 flex items-center justify-center">{children}</div>
           ) : (
-            <div className="flex flex-col items-center justify-center text-center px-6 relative py-12">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
               <div className="absolute inset-0 cyber-grid opacity-5 pointer-events-none" />
 
               {/* Orbiting idle animation */}
@@ -234,24 +244,44 @@ export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrow
                 </div>
               </div>
 
-              <h4 className="text-sm font-bold text-zinc-400 font-mono tracking-wider">
-                {phase === 'parsing' && 'PARSING GOAL INTENT...'}
-                {phase === 'planning' && 'COMPILING EXECUTION PLAN...'}
-                {phase === 'idle' && 'VIEWPORT AWAITING DEPLOYMENT'}
-                {(!phase || phase === 'executing') && 'ESTABLISHING STREAM...'}
+              <h4 className={cn(
+                "text-sm font-bold font-mono tracking-wider",
+                isAwaitingApproval ? "text-amber-400" : isLaunching ? "text-emerald-400" : "text-zinc-400"
+              )}>
+                {/* execution:state (authoritative) takes precedence over phase. */}
+                {isLaunching ? '🚀 LAUNCHING BROWSER...' : (
+                  <>
+                    {phase === 'parsing' && 'PARSING GOAL INTENT...'}
+                    {phase === 'planning' && 'COMPILING EXECUTION PLAN...'}
+                    {phase === 'idle' && 'VIEWPORT AWAITING DEPLOYMENT'}
+                    {isAwaitingApproval && '🔒 AWAITING LAUNCH AUTHORIZATION'}
+                    {(!phase || phase === 'executing') && 'ESTABLISHING STREAM...'}
+                  </>
+                )}
               </h4>
               <p className="text-xs text-zinc-600 mt-2 max-w-xs leading-relaxed">
-                Deploy tasks to launch the secure browser viewport and stream execution live.
+                {isLaunching
+                  ? 'Gate cleared. The browser runtime is starting Chromium — the live stream begins on the first frame.'
+                  : isAwaitingApproval
+                    ? 'Plan ready. The browser stays closed until you approve the launch request below.'
+                    : 'Deploy tasks to launch the secure browser viewport and stream execution live.'}
               </p>
             </div>
           )
         ) : (
-          <div className="relative w-full h-full flex items-center justify-center">
+          <>
             <canvas
               ref={canvasRef}
-              className="max-w-full max-h-[500px] object-contain rounded-lg shadow-2xl border border-white/5 transition-all"
-              style={{ width: '100%', height: 'auto', display: imageLoaded ? 'block' : 'none' }}
+              className="absolute inset-0 h-full w-full object-contain transition-opacity"
+              style={{ display: imageLoaded ? 'block' : 'none' }}
             />
+
+            {/* First-frame loader — keeps the box stable until the canvas paints */}
+            {!imageLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <RefreshCw className="h-6 w-6 text-zinc-600 animate-spin" />
+              </div>
+            )}
 
             {/* Cursor trails */}
             {cursorTrails.map(trail => (
@@ -268,7 +298,7 @@ export function LiveBrowserView({ currentScreenshot, phase, children }: LiveBrow
                 {currentScreenshot.width}×{currentScreenshot.height}
               </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

@@ -47,6 +47,10 @@ export class ExecuteGoalDto {
   @IsOptional()
   @IsBoolean()
   allowLogin?: boolean;
+
+  @IsOptional()
+  @IsEnum(['conservative', 'balanced', 'aggressive'])
+  profile?: 'conservative' | 'balanced' | 'aggressive';
 }
 
 export class ParseGoalDto {

@@ -105,6 +105,7 @@ export interface ScreenshotFrame {
   base64: string;
   width: number;
   height: number;
+  url?: string;
   cursorPosition?: { x: number; y: number };
   highlightedElement?: BoundingBox;
 }
@@ -160,6 +161,14 @@ export interface BrowserSessionConfig {
   screenshotInterval: number;
   timeout: number;
   maxRetries: number;
+  profile?: 'conservative' | 'balanced' | 'aggressive';
+  // ─── Automation-gate inputs (decide whether the browser may launch) ──────
+  /** Execution mode chosen by the user. approval_required forces a launch gate. */
+  mode?: 'autonomous' | 'approval_required' | 'simulation';
+  /** User explicitly permits payment flows without a per-launch prompt. */
+  allowPayments?: boolean;
+  /** User explicitly permits login flows without a per-launch prompt. */
+  allowLogin?: boolean;
 }
 
 export const DEFAULT_BROWSER_CONFIG: BrowserSessionConfig = {
@@ -186,4 +195,43 @@ export interface AgentMemory {
   metadata?: Record<string, any> | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export enum CognitiveOutcomeType {
+  SUCCESS = 'SUCCESS',
+  SAFE_ABORT = 'SAFE_ABORT',
+  ESCALATED = 'ESCALATED',
+  FAILED = 'FAILED'
+}
+
+export interface CognitiveOutcome {
+  type: CognitiveOutcomeType;
+  explanation: string;
+  confidence: number;
+  timestamp: number;
+}
+
+export interface BrowserJobData {
+  sessionId: string;
+  taskId: string;
+  userId: string;
+  goal: string;
+  plan: {
+    steps: Array<{
+      index: number;
+      action: string;
+      target?: string;
+      value?: string;
+      description: string;
+      requiresApproval?: boolean;
+      waitCondition?: { type: string; value: string | number };
+    }>;
+    totalSteps: number;
+  };
+  config?: {
+    headless?: boolean;
+    viewport?: { width: number; height: number };
+    timeout?: number;
+  };
+  attempt?: number;
 }

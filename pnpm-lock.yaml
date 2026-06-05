@@ -262,8 +262,8 @@ importers:
         specifier: ^3.2.0
         version: 3.2.0
       framer-motion:
-        specifier: ^10.18.0
-        version: 10.18.0(react-dom@18.2.0)(react@18.2.0)
+        specifier: ^12.40.0
+        version: 12.40.0(react-dom@18.2.0)(react@18.2.0)
       lucide-react:
         specifier: ^0.314.0
         version: 0.314.0(react@18.2.0)
@@ -308,10 +308,10 @@ importers:
         specifier: ^20.11.0
         version: 20.14.10
       '@types/react':
-        specifier: ^18.2.48
+        specifier: ^18.3.0
         version: 18.3.0
       '@types/react-dom':
-        specifier: ^18.2.18
+        specifier: ^18.3.0
         version: 18.3.0
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.19.0
@@ -913,19 +913,6 @@ packages:
     dependencies:
       tslib: 2.8.1
     dev: true
-    optional: true
-
-  /@emotion/is-prop-valid@0.8.8:
-    resolution: {integrity: sha512-u5WtneEAr5IDG2Wv65yhunPSMLIpuKsbuOktRojfrEiEvRyC85LgPMZI63cr7NUqT8ZIGdSVg8ZKGxIug4lXcA==}
-    requiresBuild: true
-    dependencies:
-      '@emotion/memoize': 0.7.4
-    dev: false
-    optional: true
-
-  /@emotion/memoize@0.7.4:
-    resolution: {integrity: sha512-Ja/Vfqe3HpuzRsG1oBtWTHk2PGZ7GR+2Vz5iYGelAw8dx32K0y7PjVuxK6z1nMpZOqAFsRUPCkK1YjJ56qJlgw==}
-    dev: false
     optional: true
 
   /@eslint-community/eslint-utils@4.9.1(eslint@8.57.0):
@@ -7707,22 +7694,25 @@ packages:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
     dev: true
 
-  /framer-motion@10.18.0(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-oGlDh1Q1XqYPksuTD/usb0I70hq95OUzmL9+6Zd+Hs4XV0oaISBa/UUMSjYiq6m8EUF32132mOJ8xVZS+I0S6w==}
+  /framer-motion@12.40.0(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-uaBd3qC1v3KQqBEjwTUd183K6PbS+j0yR9w9VmEOLWA/tnUcSn8Xa3uck7t4dgpDoUss8xQTcj8W2L07lrnLFg==}
     peerDependencies:
-      react: ^18.0.0
-      react-dom: ^18.0.0
+      '@emotion/is-prop-valid': '*'
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
+      '@emotion/is-prop-valid':
+        optional: true
       react:
         optional: true
       react-dom:
         optional: true
     dependencies:
+      motion-dom: 12.40.0
+      motion-utils: 12.39.0
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       tslib: 2.8.1
-    optionalDependencies:
-      '@emotion/is-prop-valid': 0.8.8
     dev: false
 
   /fresh@2.0.0:
@@ -9439,6 +9429,16 @@ packages:
     hasBin: true
     dependencies:
       minimist: 1.2.8
+    dev: false
+
+  /motion-dom@12.40.0:
+    resolution: {integrity: sha512-HxU3ZaBwNPVQUBQf1xxgq+7JrPNZvjLVxgbpEZL7RrWJnsxOf0/OM+yrHG9ogLQ31Do/r57Oz2gQWPK+6q62mg==}
+    dependencies:
+      motion-utils: 12.39.0
+    dev: false
+
+  /motion-utils@12.39.0:
+    resolution: {integrity: sha512-8nadJAJjTtqRkmRF36FoJTrywK9nnFmnPwnSMyxaOCU7GDjN9RTMJIxx9De8ErM+vpPhMccr/6fo5WciyQLnMQ==}
     dev: false
 
   /ms@2.1.3:

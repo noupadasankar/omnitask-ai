@@ -30,6 +30,7 @@ export class PlannerAgentService {
       userPreferences?: Record<string, any>;
       memories?: string[];
       userId?: string;
+      strategyHints?: string; // Injected from StrategyMemoryService.formatStrategiesForPlanner()
     },
   ): Promise<AgentPlan> {
     this.logger.log(`Creating plan for goal: "${goal}"`);
@@ -65,8 +66,13 @@ ${availableSkills.map((skill) => `
 `).join('\n')}
 `;
 
+    // Strategy hints from StrategyMemoryService — recalled from past successful runs
+    const strategyContext = context?.strategyHints || '';
+
     const systemPrompt = `You are an autonomous browser agent planner powered by a Universal Task Execution Engine.
 Your job is to decompose a user's goal into precise, executable browser steps mapped to universal skills.
+
+${strategyContext}
 
 UNIVERSAL CORE TASK TYPES:
 1. Search Tasks: Search → Analyze → Compare → Report

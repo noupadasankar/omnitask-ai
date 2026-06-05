@@ -8,6 +8,8 @@ export interface StartGoalPayload {
   preferredSites?: string[];
   allowPayments?: boolean;
   allowLogin?: boolean;
+  // ─── COS Execution Profile ──────────────────────────────────
+  profile?: 'conservative' | 'balanced' | 'aggressive';
 }
 
 export async function parseGoal(goal: string): Promise<any> {
@@ -15,6 +17,14 @@ export async function parseGoal(goal: string): Promise<any> {
   return data;
 }
 
+export async function refineGoal(currentGoal: any, userFeedback: string): Promise<any> {
+  const { data } = await api.post('/agent/refine-goal', { currentGoal, userFeedback });
+  return data;
+}
+export async function clarifyGoal(goal: string) {
+  const res = await api.post('/agent/clarify', { goal });
+  return res.data; // { ambiguityScore, clarifyingQuestions, ... }
+}
 export async function startGoalExecution(
   payload: StartGoalPayload,
 ): Promise<{ sessionId: string; parsedGoal: any }> {
@@ -128,5 +138,81 @@ export async function saveUserProfileCard(card: any): Promise<any> {
 
 export async function listSkills(): Promise<any[]> {
   const { data } = await api.get<any[]>('/agent/skills');
+  return data;
+}
+
+export async function getAgentRegistry(): Promise<{
+  agents: Array<{
+    id: string;
+    name: string;
+    category: string;
+    description: string;
+    taskTypes: string[];
+    pluginCount: number;
+    plugins: string[];
+  }>;
+  plugins: Array<{
+    id: string;
+    name: string;
+    category: string;
+    supportedDomains: string[];
+    version: string;
+  }>;
+}> {
+  const { data } = await api.get('/agent/registry');
+  return data;
+}
+
+export interface UserDomainPreferences {
+  preferredJobSites: string[];
+  preferredFoodApps: string[];
+  preferredShoppingSites: string[];
+  preferredTravelSites: string[];
+}
+
+export async function getDomainPreferences(): Promise<UserDomainPreferences> {
+  const { data } = await api.get<UserDomainPreferences>('/agent/preferences');
+  return data;
+}
+
+export async function saveDomainPreferences(prefs: UserDomainPreferences): Promise<void> {
+  await api.put('/agent/preferences', prefs);
+}
+
+// ─── COS Telemetry API ─────────────────────────────────────────────────
+
+/**
+ * Fetches the live World State Object for a running session.
+ * Useful for hydrating the WorldStateHud after a page reconnect.
+ */
+export async function getSessionWso(sessionId: string): Promise<{
+  sessionId: string;
+  wso: {
+    stateConfidence: number;
+    beliefSourceConsensus: number;
+    version: number;
+    belief: Record<string, { value: any; confidence: number; source: string }>;
+  } | null;
+}> {
+  const { data } = await api.get(`/agent/session/${sessionId}/wso`);
+  return data;
+}
+
+/**
+ * Returns aggregated COS diagnostic summary for a session:
+ * profile, status, confidence scores, step index.
+ */
+export async function getSessionDiagnostics(sessionId: string): Promise<{
+  sessionId: string;
+  profile: 'conservative' | 'balanced' | 'aggressive';
+  goal: string;
+  status: string;
+  currentStepIndex: number;
+  totalSteps: number;
+  wsoConfidence: number | null;
+  beliefConsensus: number | null;
+  wsoVersion: number | null;
+}> {
+  const { data } = await api.get(`/agent/session/${sessionId}/diagnostics`);
   return data;
 }

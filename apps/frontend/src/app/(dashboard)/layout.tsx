@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Cpu } from 'lucide-react';
@@ -15,22 +15,37 @@ export default function DashboardLayout({
 }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    console.log('[DashboardLayout] Component mounted on client.');
+  }, []);
+
+  useEffect(() => {
+    console.log('[DashboardLayout] State Sync:', {
+      mounted,
+      loading,
+      user: user ? { id: user.id, email: user.email } : null,
+      hasToken: typeof window !== 'undefined' ? !!localStorage.getItem('token') : false
+    });
+
     if (
+      mounted &&
       !loading &&
       !user &&
       typeof window !== 'undefined' &&
       !localStorage.getItem('token')
     ) {
+      console.log('[DashboardLayout] Authentication check failed. Redirecting to /login...');
       router.replace('/login');
     }
-  }, [loading, user, router]);
+  }, [mounted, loading, user, router]);
 
   /* ===========================================================
      LOADING STATE - On-brand boot sequence
   =========================================================== */
-  if (loading) {
+  if (!mounted || loading) {
     return (
       <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-black">
         {/* Background effects */}

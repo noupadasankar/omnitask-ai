@@ -33,6 +33,9 @@ model User {
   quota             UserQuota?
   executionSessions ExecutionSession[] @relation("userExecutionSessions")
   agentMemories     AgentMemory[]      @relation("userAgentMemories")
+  socialPosts       SocialPost[]
+  travelBookings    TravelBooking[]
+  foodOrders        FoodOrder[]
 
   @@index([email])
 }
@@ -153,21 +156,21 @@ model Execution {
 }
 
 model ExecutionStep {
-  id             String     @id @default(cuid())
-  executionId    String
-  stepIndex      Int
-  stepType       String
-  action         String
-  status         StepStatus @default(PENDING)
-  input          Json?
-  output         Json?
-  errorMessage   String?
-  screenshotKey  String?
-  domSnapshot    String?
-  durationMs     Int?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  execution      Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  executionId   String
+  stepIndex     Int
+  stepType      String
+  action        String
+  status        StepStatus @default(PENDING)
+  input         Json?
+  output        Json?
+  errorMessage  String?
+  screenshotKey String?
+  domSnapshot   String?
+  durationMs    Int?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  execution     Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, stepIndex])
 }
@@ -297,30 +300,30 @@ model Notification {
 // ─── Autonomous Browser Agent Models ──────────────────────────
 
 model AgentExecutionStep {
-  id             String            @id @default(cuid())
+  id             String           @id @default(cuid())
   sessionId      String
-  session        ExecutionSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session        ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   stepIndex      Int
   action         String
   target         String?
   value          String?
   description    String
   riskLevel      RiskLevel
-  status         StepStatusAgent   @default(PENDING)
+  status         StepStatusAgent  @default(PENDING)
   result         Json?
   screenshotUrl  String?
   errorMessage   String?
   startedAt      DateTime?
   completedAt    DateTime?
   durationMs     Int?
-  retryCount     Int               @default(0)
+  retryCount     Int              @default(0)
   visionAnalysis Json?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
+  @@unique([sessionId, stepIndex])
   @@index([sessionId])
   @@index([status])
-  @@unique([sessionId, stepIndex])
 }
 
 enum StepStatusAgent {
@@ -333,15 +336,15 @@ enum StepStatusAgent {
 }
 
 model ExecutionSession {
-  id               String               @id @default(cuid())
+  id               String                 @id @default(cuid())
   taskId           String
-  task             Task                 @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task             Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   userId           String
-  user             User                 @relation("userExecutionSessions", fields: [userId], references: [id], onDelete: Cascade)
+  user             User                   @relation("userExecutionSessions", fields: [userId], references: [id], onDelete: Cascade)
   status           ExecutionSessionStatus @default(PENDING)
   plan             Json?
-  currentStepIndex Int                  @default(0)
-  totalSteps       Int                  @default(0)
+  currentStepIndex Int                    @default(0)
+  totalSteps       Int                    @default(0)
   startedAt        DateTime?
   completedAt      DateTime?
   errorMessage     String?
@@ -349,8 +352,8 @@ model ExecutionSession {
   steps            AgentExecutionStep[]
   screenshots      Screenshot[]
   approvalRequests ApprovalRequest[]
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   @@index([taskId])
   @@index([userId])
@@ -506,4 +509,242 @@ enum NotificationType {
   APPROVAL_REQUIRED
   SYSTEM
   BILLING
+}
+
+// ─── Autonomous Job Application Agent ──────────────────────────────────────────
+
+/// Per-user job-search preferences used by the rule-based match scorer.
+model JobPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  roles             String[] @default([])
+  locations         String[] @default([])
+  requiredKeywords  String[] @default([])
+  preferredKeywords String[] @default([])
+  excludeKeywords   String[] @default([])
+  skills            String[] @default([])
+  minScore          Int      @default(60)
+  dailyLimit        Int      @default(20)
+  remoteOnly        Boolean  @default(false)
+  minSalary         Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, portal, externalJobId) — prevents re-applying to the same job.
+model JobApplication {
+  id            String               @id @default(cuid())
+  userId        String
+  portal        String
+  externalJobId String
+  title         String
+  company       String?
+  location      String?
+  url           String?
+  score         Int                  @default(0)
+  matchReasons  Json?
+  status        JobApplicationStatus @default(MATCHED)
+  sessionId     String?
+  errorMessage  String?
+  appliedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([userId, portal, externalJobId])
+  @@index([userId])
+  @@index([status])
+  @@index([sessionId])
+}
+
+enum JobApplicationStatus {
+  MATCHED
+  SKIPPED
+  PENDING_APPROVAL
+  APPLIED
+  FAILED
+}
+
+// ─── Autonomous Shopping Agent ─────────────────────────────────────────────────
+
+/// Per-user shopping preferences used by the rule-based product scorer.
+model ShoppingPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  categories       String[] @default([])
+  mustHaveFeatures String[] @default([])
+  avoidKeywords    String[] @default([])
+  preferredBrands  String[] @default([])
+  maxPrice         Int?
+  minRating        Float    @default(4.0)
+  minScore         Int      @default(60)
+  autoBuyLimit     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, site, externalProductId) — dedupe, price-watch, purchase gate.
+model TrackedProduct {
+  id                String             @id @default(cuid())
+  userId            String
+  site              String
+  externalProductId String
+  title             String
+  brand             String?
+  url               String?
+  currency          String             @default("INR")
+  lastPrice         Int?
+  targetPrice       Int?
+  rating            Float?
+  score             Int                @default(0)
+  matchReasons      Json?
+  priceHistory      Json?
+  status            ProductTrackStatus @default(MATCHED)
+  sessionId         String?
+  errorMessage      String?
+  purchasedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([userId, site, externalProductId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ProductTrackStatus {
+  MATCHED
+  SKIPPED
+  WATCHING
+  PENDING_APPROVAL
+  PURCHASED
+  FAILED
+}
+
+// ─── Digital Twin — versioned artifact store (shared service) ───────────────────
+
+/// Every artifact an agent produces: structured result sets, reports, extracted
+/// documents, screenshots. Queryable by kind/tag/text and versioned per title.
+model Artifact {
+  id         String       @id @default(cuid())
+  userId     String
+  sessionId  String?
+  agent      String?
+  kind       ArtifactKind @default(DATA)
+  title      String
+  mimeType   String       @default("application/json")
+  text       String?
+  data       Json?
+  storageKey String?
+  tags       String[]     @default([])
+  version    Int          @default(1)
+  createdAt  DateTime     @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([kind])
+  @@index([userId, title])
+}
+
+enum ArtifactKind {
+  SCREENSHOT
+  DATA
+  REPORT
+  DOCUMENT
+  RESULT_SET
+}
+
+model SocialPost {
+  id           String          @id @default(cuid())
+  userId       String
+  platform     String          // "linkedin" | "twitter" | "instagram"
+  content      String
+  hashtags     String[]        @default([])
+  imageUrl     String?
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  status       SocialPostStatus @default(DRAFT)
+  likes        Int             @default(0)
+  shares       Int             @default(0)
+  comments     Int             @default(0)
+  views        Int             @default(0)
+  sessionId    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+enum SocialPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model TravelBooking {
+  id           String              @id @default(cuid())
+  userId       String
+  type         TravelBookingType
+  origin       String?
+  destination  String
+  departDate   DateTime?
+  returnDate   DateTime?
+  travelers    Int                 @default(1)
+  budget       Int?
+  currency     String              @default("INR")
+  status       TravelBookingStatus @default(SEARCHING)
+  results      Json?
+  selectedOption Json?
+  sessionId    String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum TravelBookingType {
+  FLIGHT
+  HOTEL
+  ITINERARY
+  PACKAGE
+}
+
+enum TravelBookingStatus {
+  SEARCHING
+  FOUND
+  BOOKING
+  BOOKED
+  FAILED
+}
+
+model FoodOrder {
+  id          String          @id @default(cuid())
+  userId      String
+  platform    String          // "swiggy" | "zomato"
+  restaurantName String?
+  items       Json?
+  totalAmount Int?
+  currency    String          @default("INR")
+  status      FoodOrderStatus @default(SEARCHING)
+  sessionId   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum FoodOrderStatus {
+  SEARCHING
+  FOUND
+  ORDERING
+  ORDERED
+  FAILED
 }

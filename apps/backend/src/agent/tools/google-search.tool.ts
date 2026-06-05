@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Tool } from './tool.interface';
 import { BrowserAgentService } from '../browser-agent.service';
 
@@ -9,7 +9,10 @@ export class GoogleSearchTool implements Tool {
   name = 'google_search';
   description = 'Searches Google and returns top 5 results';
 
-  constructor(private browserAgent: BrowserAgentService) {}
+  constructor(
+    @Inject(forwardRef(() => BrowserAgentService))
+    private browserAgent: BrowserAgentService,
+  ) {}
 
   async execute(input: { query: string }): Promise<any> {
     try {

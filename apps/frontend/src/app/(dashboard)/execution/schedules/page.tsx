@@ -87,7 +87,7 @@ export default function SchedulesPage() {
           </div>
         </div>
 
-        <Link href="/execution">
+        <Link href="/dashboard">
           <button className="h-9 px-4 rounded-xl border border-red-500/25 bg-red-500/10 text-xs font-bold font-mono text-red-400 hover:bg-red-500/20 transition-all flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
             MISSION CONTROL

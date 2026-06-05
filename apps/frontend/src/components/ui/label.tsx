@@ -6,7 +6,7 @@ export interface LabelProps extends React.ComponentPropsWithoutRef<typeof RadixL
 
 const Label = React.forwardRef<
   React.ElementRef<typeof RadixLabel>,
-  LabelProps
+  LabelProps & { className?: string }
 >(({ className, ...props }, ref) => (
   <RadixLabel
     ref={ref}
@@ -14,7 +14,7 @@ const Label = React.forwardRef<
       'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
       className
     )}
-    {...props}
+    {...(props as any)}
   />
 ));
 Label.displayName = RadixLabel.displayName;

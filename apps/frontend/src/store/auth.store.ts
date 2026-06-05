@@ -26,16 +26,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   fetchUser: async () => {
     try {
       const token = localStorage.getItem('token');
+      console.log('[AuthStore] fetchUser initiated. Token exists:', !!token);
 
       if (!token) {
         set({ user: null, loading: false });
+        console.log('[AuthStore] No auth token present in local storage.');
         return;
       }
 
       const { data } = await authApi.me();
+      console.log('[AuthStore] fetchUser completed. Profile data received:', data);
 
       set({ user: data, loading: false });
     } catch (error) {
+      console.error('[AuthStore] fetchUser failed:', error);
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       set({ user: null, loading: false });

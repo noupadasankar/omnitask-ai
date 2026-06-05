@@ -112,12 +112,14 @@ export function SystemMetrics({
   const progress = totalSteps > 0 ? (currentStepIndex / totalSteps) * 100 : 0;
 
   const riskLevel = plan?.riskAssessment?.overallRisk || 'LOW';
-  const safetyConfig = {
+  const safetyConfigMap = {
     LOW: { label: 'SAFE', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', glow: '' },
     MEDIUM: { label: 'CAUTION', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', glow: '' },
     HIGH: { label: 'DANGER', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', glow: 'neon-glow-red' },
     CRITICAL: { label: 'CRITICAL', color: 'text-red-500', bg: 'bg-red-500/15', border: 'border-red-500/30', glow: 'neon-glow-red-intense' },
-  }[riskLevel] || safetyConfig.LOW;
+  };
+  const safetyConfig =
+    safetyConfigMap[riskLevel as keyof typeof safetyConfigMap] || safetyConfigMap.LOW;
 
   const phaseConfig: Record<string, { label: string; color: string; bg: string; border: string; pulse: boolean }> = {
     idle: { label: 'STANDBY', color: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20', pulse: false },

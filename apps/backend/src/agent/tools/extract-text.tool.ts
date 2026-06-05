@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Tool } from './tool.interface';
 import { BrowserAgentService } from '../browser-agent.service';
 
@@ -9,7 +9,10 @@ export class ExtractTextTool implements Tool {
   name = 'extract_text';
   description = 'Extracts text from current page or specific selector';
 
-  constructor(private browserAgent: BrowserAgentService) {}
+  constructor(
+    @Inject(forwardRef(() => BrowserAgentService))
+    private browserAgent: BrowserAgentService,
+  ) {}
 
   async execute(input: { selector?: string; page?: any }): Promise<any> {
     try {

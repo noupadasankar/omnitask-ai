@@ -17,6 +17,12 @@ import { PlanningModule } from './planning/planning.module';
 import { ExecutionModule } from './execution/execution.module';
 import { MemoryModule } from './memory/memory.module';
 import { AgentModule } from './agent/agent.module';
+import { JobModule } from './job/job.module';
+import { ShoppingModule } from './shopping/shopping.module';
+import { SocialModule } from './social/social.module';
+import { TravelModule } from './travel/travel.module';
+import { FoodModule } from './food/food.module';
+import { DigitalTwinModule } from './digital-twin/digital-twin.module';
 import { HealthModule } from './health/health.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -46,6 +52,12 @@ import { AppService } from './app.service';
     ExecutionModule,
     MemoryModule,
     AgentModule,
+    JobModule,
+    ShoppingModule,
+    SocialModule,
+    TravelModule,
+    FoodModule,
+    DigitalTwinModule,
     HealthModule,
   ],
   controllers: [AppController],

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Check, X, Clock, AlertTriangle, Keyboard } from 'lucide-react';
+import { ShieldAlert, Check, X, Clock, AlertTriangle, Keyboard, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ApprovalRequest } from '@/types/agent';
 
@@ -62,6 +62,7 @@ export function ApprovalPanel({ pendingApproval, onApprove, onDeny }: ApprovalPa
 
   const isCritical = pendingApproval.riskLevel === 'CRITICAL';
   const isHigh = pendingApproval.riskLevel === 'HIGH' || isCritical;
+  const isGate = !!pendingApproval.gate;
 
   return (
     <AnimatePresence>
@@ -87,13 +88,13 @@ export function ApprovalPanel({ pendingApproval, onApprove, onDeny }: ApprovalPa
               !isHigh && "border-yellow-500 bg-yellow-500/10 text-yellow-500"
             )}
           >
-            <ShieldAlert className="h-6 w-6" />
+            {isGate ? <Rocket className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}
           </div>
 
           <div className="space-y-1.5 text-left">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">
-                VERIFICATION REQUIRED
+                {isGate ? 'BROWSER LAUNCH AUTHORIZATION' : 'VERIFICATION REQUIRED'}
               </span>
               <span
                 className={cn(
@@ -115,15 +116,27 @@ export function ApprovalPanel({ pendingApproval, onApprove, onDeny }: ApprovalPa
             </div>
 
             <h3 className="text-sm font-bold text-white leading-snug">
-              {pendingApproval.actionDetails?.description || 'Sensitive page operation intercepted'}
+              {isGate
+                ? (pendingApproval.actionDetails?.description || 'Authorize browser launch')
+                : (pendingApproval.actionDetails?.description || 'Sensitive page operation intercepted')}
             </h3>
 
-            <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">
-              Action: <span className="font-mono text-zinc-300 bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{pendingApproval.actionDetails?.action}</span>
-              {pendingApproval.actionDetails?.target && (
-                <> on <span className="font-mono text-zinc-300 bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{pendingApproval.actionDetails.target}</span></>
-              )}
-            </p>
+            {isGate ? (
+              <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">
+                No browser is open yet. Approving launches a sandboxed Chromium session and begins live automation
+                {pendingApproval.targetDomains?.length ? (
+                  <> on <span className="font-mono text-zinc-300 bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{pendingApproval.targetDomains.join(', ')}</span></>
+                ) : null}
+                . You can pause or stop at any time.
+              </p>
+            ) : (
+              <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">
+                Action: <span className="font-mono text-zinc-300 bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{pendingApproval.actionDetails?.action}</span>
+                {pendingApproval.actionDetails?.target && (
+                  <> on <span className="font-mono text-zinc-300 bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{pendingApproval.actionDetails.target}</span></>
+                )}
+              </p>
+            )}
           </div>
         </div>
 
@@ -155,8 +168,8 @@ export function ApprovalPanel({ pendingApproval, onApprove, onDeny }: ApprovalPa
             onClick={() => onApprove(pendingApproval.id)}
             className="flex h-11 px-5 items-center justify-center gap-2 rounded-xl bg-red-500 text-xs font-bold text-white transition-all hover:scale-105 hover:shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95"
           >
-            <Check className="h-4 w-4" />
-            APPROVE
+            {isGate ? <Rocket className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+            {isGate ? 'APPROVE & LAUNCH' : 'APPROVE'}
             <span className="text-[8px] font-mono opacity-60 ml-0.5">[ENTER]</span>
           </button>
         </div>

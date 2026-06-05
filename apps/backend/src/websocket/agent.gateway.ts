@@ -1,3 +1,11 @@
+// apps/backend/src/websocket/agent.gateway.ts
+//
+// WebSocket Gateway — upgraded with:
+//   • clarification:required  (emit to frontend when goal is ambiguous)
+//   • clarification:response  (receive user answers, store in Redis, resume engine)
+//   • approval:respond        (now also writes decision to Redis for Worker)
+//   • All existing events preserved
+
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -10,6 +18,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { ExecutionEngineService } from '../agent/execution-engine.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { WorkerEventRelayService } from './worker-event-relay.service';
 
 @WebSocketGateway({
   namespace: '/agent',
@@ -32,6 +42,9 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @Inject(forwardRef(() => ExecutionEngineService))
     private executionEngine: ExecutionEngineService,
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => WorkerEventRelayService))
+    private relay: WorkerEventRelayService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -44,8 +57,10 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
-    this.logger.log(`📡 Client disconnected: ${client.id}`);
+    this.logger.log(`Client disconnected: ${client.id}`);
   }
+
+  // ─── Session Room ────────────────────────────────────────────────────────────
 
   @SubscribeMessage('ping')
   handlePing(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
@@ -75,22 +90,86 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { success: true };
   }
 
+  // ─── Approval ────────────────────────────────────────────────────────────────
+  //
+  // Two paths:
+  //   1. In-process (ExecutionEngineService) — for sessions running in API process
+  //   2. Redis key (WorkerEventRelayService) — for sessions running in Worker
+
   @SubscribeMessage('approval:respond')
   async handleApprovalResponse(
-    @MessageBody() data: { approvalRequestId: string; status: 'APPROVED' | 'DENIED' },
+    @MessageBody()
+    data: {
+      approvalRequestId: string;
+      sessionId?: string;
+      stepIndex?: number;
+      status: 'APPROVED' | 'DENIED';
+    },
     @ConnectedSocket() client: Socket,
-  ) {
+    ) {
     try {
+      const approval = await this.prisma.approvalRequest.findUnique({
+        where: { id: data.approvalRequestId },
+      });
+
+      // Path 1: In-process approval (execution engine holds approval promise)
       await this.executionEngine.handleApprovalResponse(
         data.approvalRequestId,
         data.status,
       );
+
+      // Path 2: Worker approval via Redis key
+      const sessionId = data.sessionId || approval?.sessionId;
+      const stepIndex = data.stepIndex ?? approval?.stepIndex;
+      if (sessionId && stepIndex !== undefined) {
+        await this.relay.setApprovalDecision(
+          sessionId,
+          stepIndex,
+          data.status,
+        );
+      }
+
       return { success: true };
     } catch (error: any) {
       this.logger.error(`Approval response error: ${error.message}`);
       return { success: false, error: error.message };
     }
   }
+
+  // ─── Clarification ───────────────────────────────────────────────────────────
+  //
+  // Frontend sends 'clarification:response' when user answers the questions
+  // the GoalUnderstandingService emitted as 'clarification:required'.
+
+  @SubscribeMessage('clarification:response')
+  async handleClarificationResponse(
+    @MessageBody()
+    data: {
+      sessionId: string;
+      answers: string; // user's natural-language answer to the clarifying questions
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      this.logger.log(`Clarification response for session ${data.sessionId}`);
+
+      // Store answer in Redis — ExecutionEngine polls this key
+      await this.relay.setClarificationAnswer(data.sessionId, data.answers);
+
+      // Emit acknowledgment so the frontend knows we received the answer
+      this.emitToSession(data.sessionId, 'clarification:received', {
+        sessionId: data.sessionId,
+        message: 'Clarification received. Resuming planning...',
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      this.logger.error(`Clarification response error: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // ─── Session Control ─────────────────────────────────────────────────────────
 
   @SubscribeMessage('session:pause')
   async handleSessionPause(
@@ -131,28 +210,22 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // 📡 EMIT EVENTS TO ALL CONNECTED CLIENTS
+  // ─── Emit Helpers ────────────────────────────────────────────────────────────
+
   emit(event: string, data: any) {
-    this.logger.log(`📡 Broadcasting event: ${event}`);
     this.server.emit(event, data);
   }
 
-  // 📡 EMIT TO SPECIFIC ROOM
   emitToRoom(room: string, event: string, data: any) {
-    this.logger.log(`📡 Emitting to room ${room}: ${event}`);
     this.server.to(room).emit(event, data);
   }
 
-  // 📡 EMIT TO SPECIFIC USER
   emitToUser(userId: string, event: string, data: any) {
-    this.logger.log(`📡 Emitting to user ${userId}: ${event}`);
     this.server.to(userId).emit(event, data);
   }
 
-  // 📡 EMIT TO SPECIFIC SESSION
   emitToSession(sessionId: string, event: string, data: any) {
-    this.logger.debug(`📡 Emitting to session ${sessionId}: ${event}`);
+    this.logger.debug(`📡 → session ${sessionId}: ${event}`);
     this.server.to(sessionId).emit(event, data);
   }
 }
-

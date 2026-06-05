@@ -1,3 +1,5 @@
+// apps/backend/src/queue/queue.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue, JobOptions } from 'bull';
 import { InjectQueue } from '@nestjs/bull';
@@ -20,6 +22,8 @@ export class QueueService {
     @InjectQueue('files') private readonly filesQueue: Queue,
   ) {}
 
+  // ─── Tasks Queue ─────────────────────────────────────────────────────────────
+
   async addTaskJob(
     jobName: TaskJobName,
     taskId: string,
@@ -36,6 +40,8 @@ export class QueueService {
     return { jobId: job.id, taskId, jobName };
   }
 
+  // ─── Files Queue ─────────────────────────────────────────────────────────────
+
   async addFileJob(fileId: string, data: Record<string, unknown>) {
     const job = await this.filesQueue.add('process-file', { fileId, ...data }, {
       attempts: 3,
@@ -44,5 +50,12 @@ export class QueueService {
     });
     this.logger.log(`File job created: ${job.id}`);
     return { jobId: job.id, fileId };
+  }
+
+  // ─── Queue Health ─────────────────────────────────────────────────────────────
+
+  async getQueueStats() {
+    const tasksCounts = await this.tasksQueue.getJobCounts();
+    return { tasks: tasksCounts };
   }
 }

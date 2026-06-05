@@ -70,6 +70,11 @@ export class WebSocketService {
     this.socket.emit('session:leave', { sessionId });
   }
 
+  sendClarificationResponse(sessionId: string, answers: string): void {
+    if (!this.socket) return;
+    this.socket.emit('clarification:response', { sessionId, answers });
+  }
+
   sendApprovalResponse(
     approvalRequestId: string,
     status: 'APPROVED' | 'DENIED',

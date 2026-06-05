@@ -15,7 +15,10 @@ export type ExecutionEventType =
   | 'approval:requested'
   | 'approval:responded'
   | 'approval:expired'
+  | 'automation:gate'
   | 'browser:initialized'
+  | 'browser:state'
+  | 'execution:state'
   | 'execution:paused'
   | 'execution:resumed'
   | 'execution:cancelled'
@@ -35,6 +38,7 @@ export interface ScreenshotFrame {
   base64: string;
   width: number;
   height: number;
+  url?: string;
   cursorPosition?: { x: number; y: number };
   highlightedElement?: { x: number; y: number; width: number; height: number };
 }
@@ -49,6 +53,10 @@ export interface ApprovalRequest {
   id: string;
   stepIndex: number;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  /** True when this is the pre-launch automation gate (browser not yet open). */
+  gate?: boolean;
+  /** Domains the plan will navigate to (populated for launch-gate approvals). */
+  targetDomains?: string[];
   actionDetails: {
     action: string;
     target?: string;
@@ -57,6 +65,32 @@ export interface ApprovalRequest {
   };
   expiresAt: string;
 }
+
+/** Browser lifecycle state mirrored from the backend state machine. */
+export type BrowserState =
+  | 'IDLE'
+  | 'INITIALIZING'
+  | 'READY'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'STOPPED'
+  | 'ERROR';
+
+/**
+ * Derived execution state mirrored from the backend authority. The frontend is
+ * purely reflective — it never computes this, only displays what it receives.
+ */
+export type ExecutionState =
+  | 'IDLE'
+  | 'PLANNING'
+  | 'PLAN_READY'
+  | 'WAITING_APPROVAL'
+  | 'BROWSER_INITIALIZING'
+  | 'READY'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'COMPLETED'
+  | 'ERROR';
 
 export interface AgentMemory {
   id: string;
@@ -98,6 +132,7 @@ export interface PlannedStep {
   description: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   requiresApproval: boolean;
+  skillName?: string;
   fallback?: PlannedStep;
   waitCondition?: WaitCondition;
   validation?: StepValidation;
@@ -158,4 +193,13 @@ export interface ExecutionStep {
   errorMessage?: string;
   durationMs?: number;
   retryCount?: number;
+}
+
+export type CognitiveOutcomeType = 'SUCCESS' | 'SAFE_ABORT' | 'ESCALATED' | 'FAILED';
+
+export interface CognitiveOutcome {
+  type: CognitiveOutcomeType;
+  explanation: string;
+  confidence: number;
+  timestamp: number;
 }

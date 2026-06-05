@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Tool } from './tool.interface';
 import { BrowserAgentService } from '../browser-agent.service';
 
@@ -9,7 +9,10 @@ export class OpenUrlTool implements Tool {
   name = 'open_url';
   description = 'Opens a URL and returns page content';
 
-  constructor(private browserAgent: BrowserAgentService) {}
+  constructor(
+    @Inject(forwardRef(() => BrowserAgentService))
+    private browserAgent: BrowserAgentService,
+  ) {}
 
   async execute(input: { url: string; selector?: string }): Promise<any> {
     let page: any = null;

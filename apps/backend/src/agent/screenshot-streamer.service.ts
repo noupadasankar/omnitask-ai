@@ -4,6 +4,7 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { BrowserAgentService } from './browser-agent.service';
 import { AgentGateway } from '../websocket/agent.gateway';
 import { ScreenshotFrame } from '../shared/interfaces/agent.interfaces';
+import { SessionManagerService } from './runtime/session-manager.service';
 
 @Injectable()
 export class ScreenshotStreamerService {
@@ -12,9 +13,13 @@ export class ScreenshotStreamerService {
   private frameCounters = new Map<string, number>();
 
   constructor(
+    @Inject(forwardRef(() => BrowserAgentService))
     private browserAgent: BrowserAgentService,
     @Inject(forwardRef(() => AgentGateway))
     private wsGateway: AgentGateway,
+    // The first real frame is the inline runtime's proof the browser is live.
+    @Inject(forwardRef(() => SessionManagerService))
+    private sessionManager: SessionManagerService,
   ) {}
 
   startStreaming(sessionId: string, intervalMs = 500): void {
@@ -49,10 +54,18 @@ export class ScreenshotStreamerService {
           base64,
           width: session.config.viewport.width,
           height: session.config.viewport.height,
+          url: this.browserAgent.getCurrentUrl(sessionId) || undefined,
           cursorPosition: cursorPos || undefined,
         };
 
         this.wsGateway.emitToSession(sessionId, 'screenshot:frame', frame);
+
+        // First real frame == the browser is demonstrably live and rendering.
+        // This is where the inline runtime declares RUNNING (never the
+        // orchestrator). Idempotent on every later frame.
+        if (frameCount === 1) {
+          this.sessionManager.transitionBrowserState(sessionId, 'RUNNING');
+        }
       } catch (error: any) {
         const frameCount = this.frameCounters.get(sessionId) || 0;
         if (frameCount % 10 === 0) {
@@ -94,6 +107,7 @@ export class ScreenshotStreamerService {
       base64,
       width: session?.config.viewport.width || 1920,
       height: session?.config.viewport.height || 1080,
+      url: this.browserAgent.getCurrentUrl(sessionId) || undefined,
       cursorPosition: cursorPos || undefined,
     };
 

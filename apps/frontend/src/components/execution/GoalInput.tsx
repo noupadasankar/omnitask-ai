@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, ShieldAlert, Cpu, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAgentStore } from '@/store/agent.store';
+import * as agentApi from '@/services/agent.service';
 
 interface GoalInputProps {
   onStart: (payload: {
@@ -12,6 +14,7 @@ interface GoalInputProps {
     maxBudget?: number;
     allowPayments?: boolean;
     allowLogin?: boolean;
+    profile?: 'conservative' | 'balanced' | 'aggressive';
   }) => void;
   loading: boolean;
 }
@@ -33,6 +36,7 @@ const QUICK_CHIPS = [
 ];
 
 export function GoalInput({ onStart, loading }: GoalInputProps) {
+  const store = useAgentStore();
   const [goal, setGoal] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [mode, setMode] = useState<'autonomous' | 'approval_required' | 'simulation'>('approval_required');
@@ -40,6 +44,11 @@ export function GoalInput({ onStart, loading }: GoalInputProps) {
   const [allowPayments, setAllowPayments] = useState(false);
   const [allowLogin, setAllowLogin] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // ─── COS Execution Profile ───────────────────────────────────────────
+  const [profile, setProfile] = useState<'conservative' | 'balanced' | 'aggressive'>('balanced');
+  
+  const [clarificationAnswer, setClarificationAnswer] = useState('');
+  const [refining, setRefining] = useState(false);
 
   // Cycling placeholder
   useEffect(() => {
@@ -58,8 +67,101 @@ export function GoalInput({ onStart, loading }: GoalInputProps) {
       maxBudget: maxBudget || undefined,
       allowPayments,
       allowLogin,
+      profile,
     });
   };
+
+  const handleClarificationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clarificationAnswer.trim() || refining) return;
+    
+    setRefining(true);
+    try {
+      // 1. Refine intent using backend LLM goal refinement
+      const refined = await agentApi.refineGoal(store.parsedGoal, clarificationAnswer);
+      
+      // 2. Clear ambiguity gate
+      store.setClarificationQuestions(null);
+      setClarificationAnswer('');
+      
+      // 3. Start execution with the refined, clear goal
+      onStart({
+        ...store.clarificationGoal,
+        goal: refined.intent,
+      });
+    } catch (err) {
+      console.error('Goal refinement failed:', err);
+    } finally {
+      setRefining(false);
+    }
+  };
+
+  if (store.clarificationQuestions && store.clarificationQuestions.length > 0) {
+    return (
+      <div className="relative w-full rounded-3xl border border-red-500/30 bg-zinc-950/50 p-6 backdrop-blur-2xl shadow-2xl">
+        <div className="absolute inset-0 cyber-grid opacity-5 rounded-3xl pointer-events-none" />
+        
+        <form onSubmit={handleClarificationSubmit} className="relative z-10 space-y-4">
+          <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+            <ShieldAlert className="h-5 w-5 text-red-500 animate-pulse" />
+            <div>
+              <h3 className="text-xs font-mono font-bold tracking-widest text-red-400 uppercase">
+                Goal Clarification Gate
+              </h3>
+              <p className="text-[9px] font-mono text-zinc-500 mt-0.5">
+                The objective is too ambiguous. Please provide more details.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
+              Clarifying Question(s):
+            </div>
+            <div className="space-y-2">
+              {store.clarificationQuestions.map((question, idx) => (
+                <div key={idx} className="text-sm font-semibold text-white pl-3 border-l-2 border-red-500">
+                  {question}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 pl-5 transition-all focus-within:border-red-500/40">
+            <input
+              type="text"
+              placeholder="Your answer or clarification..."
+              value={clarificationAnswer}
+              onChange={(e) => setClarificationAnswer(e.target.value)}
+              disabled={refining}
+              className="w-full bg-transparent text-sm font-semibold text-white outline-none placeholder-zinc-500"
+            />
+            
+            <button
+              type="submit"
+              disabled={!clarificationAnswer.trim() || refining}
+              className="flex h-11 px-4 items-center justify-center rounded-xl bg-red-500 text-xs font-bold text-white transition-all hover:scale-105 active:scale-95 disabled:opacity-40"
+            >
+              {refining ? 'Refining...' : 'Submit Answers'}
+            </button>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                store.setClarificationQuestions(null);
+                store.setClarificationGoal(null);
+              }}
+              className="text-xs font-mono text-zinc-500 hover:text-white transition-all"
+            >
+              Cancel & Start Over
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full rounded-3xl border border-white/10 bg-zinc-950/40 p-6 backdrop-blur-2xl transition-all shadow-2xl">
@@ -210,6 +312,62 @@ export function GoalInput({ onStart, loading }: GoalInputProps) {
                       />
                       ALLOW LOGIN
                     </label>
+                  </div>
+                </div>
+
+                {/* 4. COS Execution Profile ──────────────────────────────────── */}
+                <div className="space-y-1.5 md:col-span-3">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-zinc-500 tracking-wider">COGNITIVE PROFILE</label>
+                    <span className="text-[9px] font-mono text-zinc-600 bg-white/5 border border-white/5 px-2 py-0.5 rounded">COS RUNTIME</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      {
+                        key: 'conservative',
+                        label: 'Conservative',
+                        desc: 'High confidence gates · Strict drift thresholds · Fewer retries',
+                        color: 'indigo',
+                      },
+                      {
+                        key: 'balanced',
+                        label: 'Balanced',
+                        desc: 'Default thresholds · Adaptive retries · Moderate drift tolerance',
+                        color: 'cyan',
+                      },
+                      {
+                        key: 'aggressive',
+                        label: 'Aggressive',
+                        desc: 'Low gate thresholds · Maximum retries · Exploration-tolerant drift',
+                        color: 'red',
+                      },
+                    ] as const).map(({ key, label, desc, color }) => {
+                      const isSelected = profile === key;
+                      const borderCol = color === 'indigo' ? 'border-indigo-500/40' : color === 'cyan' ? 'border-cyan-500/40' : 'border-red-500/40';
+                      const bgCol = color === 'indigo' ? 'bg-indigo-500/10' : color === 'cyan' ? 'bg-cyan-500/10' : 'bg-red-500/10';
+                      const textCol = color === 'indigo' ? 'text-indigo-400' : color === 'cyan' ? 'text-cyan-400' : 'text-red-400';
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setProfile(key)}
+                          className={cn(
+                            'relative flex flex-col gap-1 p-3 rounded-xl border text-left transition-all',
+                            isSelected
+                              ? `${borderCol} ${bgCol}`
+                              : 'border-white/5 bg-black/30 hover:border-white/10'
+                          )}
+                        >
+                          {isSelected && (
+                            <div className={cn('absolute top-2 right-2 h-2 w-2 rounded-full', color === 'indigo' ? 'bg-indigo-400' : color === 'cyan' ? 'bg-cyan-400' : 'bg-red-400')} />
+                          )}
+                          <span className={cn('text-[10px] font-bold font-mono uppercase tracking-wider', isSelected ? textCol : 'text-zinc-400')}>
+                            {label}
+                          </span>
+                          <span className="text-[9px] text-zinc-600 leading-relaxed">{desc}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

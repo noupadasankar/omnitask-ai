@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { QueueModule } from '../queue/queue.module';
 import { AgentService } from './agent.service';
 import { AgentCoreService } from './agent-core.service';
 import { CriticService } from './critic.service';
@@ -15,7 +16,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { MemoryStoreService } from './memory-store.service';
 
-// New Autonomous centerpiece services
+// Centerpiece services
 import { GoalUnderstandingService } from './goal-understanding.service';
 import { BrowserSessionService } from './browser-session.service';
 import { ApprovalService } from './approval.service';
@@ -24,7 +25,7 @@ import { MultiAgentCoordinatorService } from './multi-agent-coordinator.service'
 import { TaskReplayService } from './task-replay.service';
 import { ScheduledTaskService } from './scheduled-task.service';
 
-// Advanced Enterprise architectural additions
+// Advanced enterprise additions
 import { PuppeteerProvider } from './providers/puppeteer-provider.service';
 import { ElementExtractionService } from './element-extraction.service';
 import { SessionPersistenceService } from './session-persistence.service';
@@ -32,14 +33,43 @@ import { ReplanningService } from './replanning.service';
 import { ZomatoAdapter } from './domain-adapters/zomato-adapter.service';
 import { SwiggyAdapter } from './domain-adapters/swiggy-adapter.service';
 
-// Skill System & User Profile Memory upgrades
+// Skill system & user profile memory
 import { UserProfileMemoryService } from './user-profile-memory.service';
 import { SkillRegistryService } from './skill-registry.service';
+import { SkillRouterService } from '../skills/skill-router.service';
+import { AgentRouterService } from './agent-router.service';
+import { PlanOrchestratorService } from './runtime/plan-orchestrator.service';
+import { RuntimeModule } from './runtime/runtime.module';
+import { PluginsModule } from '../plugins/plugins.module';
+import { AgentRegistryService } from '../agent-registry/agent-registry.service';
+import { JobDomainAgent } from '../agent-registry/agents/job.agent';
+import { FoodDomainAgent } from '../agent-registry/agents/food.agent';
+import { ShoppingDomainAgent } from '../agent-registry/agents/shopping.agent';
+import { TravelDomainAgent } from '../agent-registry/agents/travel.agent';
+import { ResearchDomainAgent } from '../agent-registry/agents/research.agent';
+import { SocialDomainAgent } from '../agent-registry/agents/social.agent';
+
+// ─── NEW Cognitive OS services ──────────────────────────────────────────────
+import { VerifierAgentService } from './verifier-agent.service';
+import { ToolRouterService } from './tool-router.service';
+import { StrategyMemoryService } from './strategy-memory.service';
+import { WorldStateService } from './world-state.service';
+import { DriftDetectorService } from './drift-detector.service';
+import { ReflectionService } from './reflection.service';
+import { ConfidenceNetworkService } from './confidence-network.service';
+import { VisionModule } from '../vision/vision.module';
+import { SelfHealingService } from './self-healing.service';
+import { LearningModule } from '../learning/learning.module';
 
 @Module({
   imports: [
     MemoryModule,
     ToolsModule,
+    QueueModule,
+    RuntimeModule,
+    PluginsModule,
+    VisionModule,
+    LearningModule,
     forwardRef(() => WebsocketModule),
     forwardRef(() => ExecutionModule),
   ],
@@ -54,7 +84,7 @@ import { SkillRegistryService } from './skill-registry.service';
     ScreenshotStreamerService,
     ExecutionEngineService,
     MemoryStoreService,
-    // New centerpiece services
+    // Centerpiece services
     GoalUnderstandingService,
     BrowserSessionService,
     ApprovalService,
@@ -65,6 +95,16 @@ import { SkillRegistryService } from './skill-registry.service';
     // Skill system & profile memory
     UserProfileMemoryService,
     SkillRegistryService,
+    SkillRouterService,
+    AgentRouterService,
+    PlanOrchestratorService,
+    AgentRegistryService,
+    JobDomainAgent,
+    FoodDomainAgent,
+    ShoppingDomainAgent,
+    TravelDomainAgent,
+    ResearchDomainAgent,
+    SocialDomainAgent,
     // Advanced additions
     {
       provide: 'BrowserProvider',
@@ -76,6 +116,15 @@ import { SkillRegistryService } from './skill-registry.service';
     ReplanningService,
     ZomatoAdapter,
     SwiggyAdapter,
+    // ─── NEW: Cognitive OS services ──────────────────────────────────────
+    VerifierAgentService,
+    ToolRouterService,
+    StrategyMemoryService,
+    WorldStateService,
+    DriftDetectorService,
+    ReflectionService,
+    ConfidenceNetworkService,
+    SelfHealingService,
   ],
   controllers: [AgentController],
   exports: [
@@ -83,7 +132,7 @@ import { SkillRegistryService } from './skill-registry.service';
     AgentCoreService,
     ExecutionEngineService,
     BrowserAgentService,
-    // Exporting centerpiece services for tasks processor
+    // Centerpiece exports
     GoalUnderstandingService,
     BrowserSessionService,
     ApprovalService,
@@ -91,9 +140,13 @@ import { SkillRegistryService } from './skill-registry.service';
     MultiAgentCoordinatorService,
     TaskReplayService,
     ScheduledTaskService,
-    // Exporting skill system & profile memory
+    // Skill system & profile memory exports
     UserProfileMemoryService,
     SkillRegistryService,
+    SkillRouterService,
+    AgentRouterService,
+    PlanOrchestratorService,
+    AgentRegistryService,
     // Advanced additions exports
     PuppeteerProvider,
     ElementExtractionService,
@@ -101,6 +154,15 @@ import { SkillRegistryService } from './skill-registry.service';
     ReplanningService,
     ZomatoAdapter,
     SwiggyAdapter,
+    // ─── NEW: Cognitive OS exports ───────────────────────────────────────
+    VerifierAgentService,
+    ToolRouterService,
+    StrategyMemoryService,
+    WorldStateService,
+    DriftDetectorService,
+    ReflectionService,
+    ConfidenceNetworkService,
+    SelfHealingService,
   ],
 })
 export class AgentModule {}

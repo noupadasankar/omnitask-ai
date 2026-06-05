@@ -1,6 +1,6 @@
 // backend/src/agent/browser-agent.service.ts
 
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Inject, forwardRef } from '@nestjs/common';
 import * as fs from 'fs';
 import { ConfigService } from '@nestjs/config';
 import puppeteer from 'puppeteer-extra';
@@ -12,6 +12,7 @@ import {
   BrowserAction,
 } from '../shared/interfaces/agent.interfaces';
 import { BrowserSessionService } from './browser-session.service';
+import { SessionManagerService } from './runtime/session-manager.service';
 
 puppeteer.use(StealthPlugin());
 
@@ -33,6 +34,9 @@ export class BrowserAgentService implements OnModuleDestroy {
   constructor(
     private configService: ConfigService,
     private sessionService: BrowserSessionService,
+    // The inline browser runtime owns its browser:state lifecycle.
+    @Inject(forwardRef(() => SessionManagerService))
+    private sessionManager: SessionManagerService,
   ) {}
 
   async onModuleDestroy() {
@@ -53,6 +57,10 @@ export class BrowserAgentService implements OnModuleDestroy {
     };
 
     this.logger.log(`Creating browser session: ${sessionId}`);
+    // Runtime owns browser:state. Chromium is launching now.
+    if (this.sessionManager.get(sessionId)) {
+      this.sessionManager.transitionBrowserState(sessionId, 'INITIALIZING');
+    }
 
     const userId = (config as any).userId || 'system';
     
@@ -82,6 +90,11 @@ export class BrowserAgentService implements OnModuleDestroy {
 
     this.sessions.set(sessionId, session);
     this.logger.log(`Browser session created: ${sessionId}`);
+    // Chromium is up at about:blank — observer can attach. Not RUNNING yet:
+    // the streamer declares RUNNING on the first real frame.
+    if (this.sessionManager.get(sessionId)) {
+      this.sessionManager.transitionBrowserState(sessionId, 'READY');
+    }
 
     return session;
   }
@@ -94,6 +107,10 @@ export class BrowserAgentService implements OnModuleDestroy {
       session.isActive = false;
       await this.sessionService.closeSession(sessionId);
       this.sessions.delete(sessionId);
+      // Runtime confirms the browser is gone.
+      if (this.sessionManager.get(sessionId)) {
+        this.sessionManager.transitionBrowserState(sessionId, 'STOPPED');
+      }
       this.logger.log(`Browser session closed: ${sessionId}`);
     } catch (error) {
       this.logger.error(`Error closing session ${sessionId}:`, error);
@@ -782,6 +799,16 @@ export class BrowserAgentService implements OnModuleDestroy {
       return await session.page.evaluate(() => {
         return { x: (window as any).__cursorX || 0, y: (window as any).__cursorY || 0 };
       });
+    } catch {
+      return null;
+    }
+  }
+
+  getCurrentUrl(sessionId: string): string | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    try {
+      return session.page.url();
     } catch {
       return null;
     }

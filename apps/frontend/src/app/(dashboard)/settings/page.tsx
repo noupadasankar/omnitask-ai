@@ -38,7 +38,7 @@ export default function SettingsPage() {
   const [maxSteps, setMaxSteps] = useState(40);
   const [timeout, setTimeoutVal] = useState(600);
   const [showOpenAIKey, setShowOpenAIKey] = useState(false);
-  const [openAIKey, setOpenAIKey] = useState('sk-proj-••••••••••••••••••••••••U8aZ');
+  const [openAIKey, setOpenAIKey] = useState(process.env.OPENAI_API_KEY);
   const [slackWebhook, setSlackWebhook] = useState(process.env.SLACK_WEBHOOK_URL);
 
   const handleSave = () => {

@@ -1,3 +1,11 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Force a single React 18 type tree across the workspace.
+# The app runs React 18 (framer-motion 10 + Radix v1/v2 are typed against it);
+# a transitive @types/react@19 breaks motion/Radix prop typings (~110 TS errors).
+# pnpm v10 reads overrides from here, NOT from package.json's "pnpm.overrides".
+overrides:
+  '@types/react': ^18.3.0
+  '@types/react-dom': ^18.3.0
