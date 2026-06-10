@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "turbo dev",
     "dev:backend": "pnpm --filter backend start:dev",
-    "dev:frontend": "pnpm --filter frontend dev",
-    "dev:worker": "pnpm --filter worker start",
+    "dev:frontend": "pnpm --filter ./apps/frontend dev",
+    "dev:worker": "pnpm --filter worker dev",
     "dev:browser-py": "python apps/browser-py/main.py",
     "build": "turbo build",
     "lint": "turbo lint",
