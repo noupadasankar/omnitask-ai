@@ -121,12 +121,8 @@ export function Sidebar() {
                     : 'border-transparent hover:border-white/10 hover:bg-white/[0.03]'
                 )}
               >
-                {/* ACTIVE GLOW BAR */}
-                {active && (
-                  <div className="absolute inset-y-0 left-0 w-1 rounded-r-full bg-red-500" />
-                )}
-
                 <div className="flex items-center gap-4">
+
                   {/* ICON CONTAINER */}
                   <div
                     className={cn(

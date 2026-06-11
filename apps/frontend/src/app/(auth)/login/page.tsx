@@ -26,7 +26,11 @@ export default function LoginPage() {
       router.push('/dashboard');
       toast.success('Authentication successful. Welcome to the Runtime.');
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Authentication sequence failed';
+      const msg =
+        error?.response?.data?.message ||
+        (!error?.response
+          ? 'Cannot reach the server. Make sure the backend is running on http://localhost:4000.'
+          : 'Authentication sequence failed');
       toast.error(msg);
     } finally {
       setIsLoading(false);

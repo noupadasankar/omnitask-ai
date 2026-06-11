@@ -65,10 +65,19 @@ api.interceptors.response.use(
       _retry?: boolean;
     };
 
+    // Auth endpoints must NEVER trigger the refresh-and-redirect flow: a 401
+    // from /auth/login means "wrong credentials" (the page shows it), and
+    // /auth/me 401 on load is handled by the auth store itself. Treating those
+    // as an expired session would wipe localStorage and reload /login, hiding
+    // the real error from the user.
+    const reqUrl = originalRequest?.url || '';
+    const isAuthRoute = /\/auth\/(login|register|refresh|me)/.test(reqUrl);
+
     // If 401 and we haven't retried yet, try to refresh token
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
+      !isAuthRoute &&
       typeof window !== 'undefined'
     ) {
       if (isRefreshing) {

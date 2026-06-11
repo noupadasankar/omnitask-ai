@@ -121,11 +121,13 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .glass-dark {
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
+.glass-dark {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 
   .red-glow {
     box-shadow:
@@ -207,7 +209,62 @@
    ANIMATIONS
 ========================================================= */
 
+/* ---------------------------------------------------------
+   Loading screen helpers (unique names to avoid Tailwind conflicts)
+---------------------------------------------------------- */
+
+@keyframes omni-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes omni-pulse-gentle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-spin-slow {
+  animation: omnitask-spin-slow 2s linear infinite;
+}
+
+@keyframes omnitask-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-pulse-gentle {
+  animation: omni-pulse-gentle 1.6s ease-in-out infinite;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-700 {
+  animation-delay: 700ms;
+}
+
 @keyframes pulse-red {
+
   0% {
     box-shadow: 0 0 0 rgba(255, 0, 0, 0.2);
   }

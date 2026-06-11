@@ -633,6 +633,7 @@ export default function DashboardPage() {
                 currentScreenshot={session.currentScreenshot}
                 phase={session.phase}
                 executionState={session.executionState}
+                errorMessage={session.lastError?.message}
               />
             </div>
 

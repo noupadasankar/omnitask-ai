@@ -12,6 +12,8 @@ interface LiveBrowserViewProps {
   phase: string;
   /** Authoritative derived execution state — for precise pre-frame labels. */
   executionState?: ExecutionState | null;
+  /** Surfaced when the run fails before/around launch (e.g. invalid API key). */
+  errorMessage?: string | null;
   children?: React.ReactNode;
 }
 
@@ -21,7 +23,7 @@ interface CursorTrail {
   y: number;
 }
 
-export function LiveBrowserView({ currentScreenshot, phase, executionState, children }: LiveBrowserViewProps) {
+export function LiveBrowserView({ currentScreenshot, phase, executionState, errorMessage, children }: LiveBrowserViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -150,7 +152,8 @@ export function LiveBrowserView({ currentScreenshot, phase, executionState, chil
   // Show the live canvas as soon as a frame exists. Only fall back to the
   // placeholder before any frame has arrived (idle / goal parsing / planning /
   // awaiting the launch gate — the browser is intentionally not open yet).
-  const showPlaceholder = !currentScreenshot || phase === 'idle' || phase === 'parsing';
+  const isFailed = phase === 'failed';
+  const showPlaceholder = !currentScreenshot || phase === 'idle' || phase === 'parsing' || isFailed;
   const isAwaitingApproval = phase === 'waiting_approval';
   // The browser runtime is launching Chromium but no frame has streamed yet.
   const isLaunching =
@@ -222,7 +225,20 @@ export function LiveBrowserView({ currentScreenshot, phase, executionState, chil
           chrome header above stays put. */}
       <div className="relative w-full aspect-video overflow-hidden rounded-2xl bg-black/40 border border-white/5 crt-lines">
         {showPlaceholder ? (
-          children ? (
+          isFailed ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+              <div className="absolute inset-0 cyber-grid opacity-5 pointer-events-none" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 mb-5">
+                <ShieldAlert className="h-8 w-8 text-red-400" />
+              </div>
+              <h4 className="text-sm font-bold font-mono tracking-wider text-red-400">
+                EXECUTION HALTED
+              </h4>
+              <p className="text-xs text-zinc-400 mt-2 max-w-sm leading-relaxed">
+                {errorMessage || 'The run failed before the browser could stream. Check the logs below for details.'}
+              </p>
+            </div>
+          ) : children ? (
             <div className="absolute inset-0 flex items-center justify-center">{children}</div>
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">

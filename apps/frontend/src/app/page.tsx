@@ -514,8 +514,26 @@ interface InteractivePlaygroundProps {
 }
 
 function InteractivePlayground({ type }: InteractivePlaygroundProps) {
-  // 1. MULTI-AGENT INTELLIGENCE SIMULATOR
-  if (type === 'multi-agent') {
+  switch (type) {
+    case 'multi-agent':
+      return <MultiAgentSim />;
+    case 'approval':
+      return <ApprovalSim />;
+    case 'graph':
+      return <GraphSim />;
+    case 'console':
+      return <ConsoleSim />;
+    case 'automation':
+      return <AutomationSim />;
+    case 'observability':
+      return <ObservabilitySim />;
+    default:
+      return null;
+  }
+}
+
+// 1. MULTI-AGENT INTELLIGENCE SIMULATOR
+function MultiAgentSim() {
     const [messages, setMessages] = useState<Array<{ sender: string; text: string; role: string; color: string }>>([
       { sender: 'PlannerAgent', role: 'PLANNER', text: 'Task initialized: Scrape stock trends and save to DB', color: 'text-purple-400 border-purple-500/30 bg-purple-500/5' },
     ]);
@@ -557,10 +575,10 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </div>
       </div>
     );
-  }
+}
 
-  // 2. HUMAN APPROVAL LAYER SIMULATOR
-  if (type === 'approval') {
+// 2. HUMAN APPROVAL LAYER SIMULATOR
+function ApprovalSim() {
     const [approvalState, setApprovalState] = useState<'idle' | 'approved' | 'rejected'>('idle');
     const [submitting, setSubmitting] = useState(false);
 
@@ -624,10 +642,10 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </div>
       </div>
     );
-  }
+}
 
-  // 3. EXECUTION GRAPH SIMULATOR
-  if (type === 'graph') {
+// 3. EXECUTION GRAPH SIMULATOR
+function GraphSim() {
     const [graphStep, setGraphStep] = useState(0);
 
     const stepsList = [
@@ -700,10 +718,10 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </Button>
       </div>
     );
-  }
+}
 
-  // 4. LIVE RUNTIME CONSOLE SIMULATOR
-  if (type === 'console') {
+// 4. LIVE RUNTIME CONSOLE SIMULATOR
+function ConsoleSim() {
     const [logs, setLogs] = useState<string[]>([
       '[12:20:01] [SYS] Initializing agent shell...',
       '[12:20:01] [AUTH] JWT session verification complete.',
@@ -745,10 +763,10 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </Button>
       </div>
     );
-  }
+}
 
-  // 5. AUTONOMOUS AUTOMATION SIMULATOR
-  if (type === 'automation') {
+// 5. AUTONOMOUS AUTOMATION SIMULATOR
+function AutomationSim() {
     const [selectedFlow, setSelectedFlow] = useState('price-monitor');
 
     const flows: any = {
@@ -807,10 +825,10 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </div>
       </div>
     );
-  }
+}
 
-  // 6. REALTIME OBSERVABILITY SIMULATOR
-  if (type === 'observability') {
+// 6. REALTIME OBSERVABILITY SIMULATOR
+function ObservabilitySim() {
     const [telemetry, setTelemetry] = useState({
       cpu: '24%',
       memory: '482MB',
@@ -850,9 +868,6 @@ function InteractivePlayground({ type }: InteractivePlaygroundProps) {
         </div>
       </div>
     );
-  }
-
-  return null;
 }
 
 function Metric({

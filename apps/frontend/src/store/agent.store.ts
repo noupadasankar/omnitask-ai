@@ -67,6 +67,8 @@ interface AgentStore {
   // Session state
   sessionId: string | null;
   phase: AgentPhase;
+  /** Last fatal error surfaced to the user (planning/execution failure). */
+  lastError: { message: string; source: string; timestamp: number } | null;
   /** Browser lifecycle state mirrored from the backend state machine. */
   browserState: BrowserState | null;
   /** Derived execution state mirrored from the backend authority (reflective). */
@@ -153,6 +155,7 @@ interface AgentStore {
   // Actions
   setSessionId: (id: string | null) => void;
   setPhase: (phase: AgentPhase) => void;
+  setError: (error: { message: string; source: string; timestamp: number } | null) => void;
   setGoal: (goal: string) => void;
   setParsedGoal: (goal: any) => void;
   setPlan: (plan: AgentPlan | null) => void;
@@ -196,6 +199,7 @@ interface AgentStore {
 const initialState = {
   sessionId: null as string | null,
   phase: 'idle' as AgentPhase,
+  lastError: null as { message: string; source: string; timestamp: number } | null,
   goal: '',
   parsedGoal: null,
   plan: null as AgentPlan | null,
@@ -235,6 +239,7 @@ export const useAgentStore = create<AgentStore>((set) => ({
 
   setSessionId: (id) => set({ sessionId: id }),
   setPhase: (phase) => set({ phase }),
+  setError: (lastError) => set({ lastError }),
   setGoal: (goal) => set({ goal }),
   setParsedGoal: (parsedGoal) => set({ parsedGoal }),
   setPlan: (plan) => set({ plan, totalSteps: plan?.steps.length || 0 }),

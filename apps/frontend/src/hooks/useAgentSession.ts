@@ -1,9 +1,28 @@
 import { useEffect, useCallback, useRef } from 'react';
+import toast from 'react-hot-toast';
 import { useSocket } from '@/providers/SocketProvider';
 import { useAgentStore, AgentPhase } from '@/store/agent.store';
 import * as agentApi from '@/services/agent.service';
 import type { ScreenshotFrame, ApprovalRequest } from '@/types/agent';
 import { wsService } from '@/services/websocket.service';
+
+/** Turn a raw backend/LLM error into a short, human-actionable message. */
+function humanizeError(raw?: string): string {
+  const msg = (raw || '').toString();
+  if (/401|invalid api key|incorrect api key/i.test(msg)) {
+    return 'OpenAI rejected the API key (401). Update OPENAI_API_KEY in .env and restart the backend.';
+  }
+  if (/429|rate limit|quota/i.test(msg)) {
+    return 'OpenAI rate limit or quota exceeded. Check your plan/billing and try again.';
+  }
+  if (/insufficient_quota|billing/i.test(msg)) {
+    return 'OpenAI billing/quota issue. Add credit to your OpenAI account.';
+  }
+  if (/ECONNREFUSED|network|timeout|fetch failed/i.test(msg)) {
+    return 'Could not reach the AI provider. Check your network/connection.';
+  }
+  return msg ? `Execution failed: ${msg}` : 'Execution failed for an unknown reason.';
+}
 
 export function useAgentSession(sessionIdParam?: string | null) {
   const socket = useSocket();
@@ -19,6 +38,12 @@ export function useAgentSession(sessionIdParam?: string | null) {
   const handleSocketEvent = useCallback((event: any) => {
     const { type, data, timestamp = Date.now() } = event;
     if (!type) return;
+
+    // Read the store via getState() so this callback stays referentially
+    // stable (deps: []). Zustand action refs are stable, and reading fresh
+    // state per event avoids re-creating the WS subscription effect on every
+    // store mutation (which would thrash the session room and drop frames).
+    const store = useAgentStore.getState();
 
     // Promote to 'executing' as soon as live signals arrive, so the viewport
     // never gets stuck behind a missed 'plan:created'/'session:started' event
@@ -398,12 +423,23 @@ export function useAgentSession(sessionIdParam?: string | null) {
           store.setCognitiveOutcome(data.cognitiveOutcome);
         }
         break;
-      case 'execution:failed':
+      case 'execution:failed': {
         store.setPhase('failed');
+        const friendly = humanizeError(data.message || data.reason);
+        store.setError({ message: friendly, source: data.reason || 'execution', timestamp });
+        store.addLog({
+          id: `fail_${timestamp}`,
+          timestamp,
+          level: 'error',
+          source: 'ExecutionEngine',
+          message: friendly,
+        });
+        toast.error(friendly, { duration: 8000 });
         if (data.cognitiveOutcome) {
           store.setCognitiveOutcome(data.cognitiveOutcome);
         }
         break;
+      }
       case 'execution:verified':
         store.setVerificationResult(data);
         break;
@@ -502,7 +538,7 @@ export function useAgentSession(sessionIdParam?: string | null) {
         });
         break;
     }
-  }, [store]);
+  }, []);
 
   // Connect WebSockets when sessionId is active
   useEffect(() => {
@@ -579,11 +615,11 @@ export function useAgentSession(sessionIdParam?: string | null) {
     });
 
     const unsubscribeFrame = wsService.on('screenshot:frame', (data: any) => {
-      const p = useAgentStore.getState().phase;
-      if (p === 'idle' || p === 'parsing' || p === 'planning') {
-        store.setPhase('executing');
+      const s = useAgentStore.getState();
+      if (s.phase === 'idle' || s.phase === 'parsing' || s.phase === 'planning') {
+        s.setPhase('executing');
       }
-      store.updateScreenshot(data as ScreenshotFrame);
+      s.updateScreenshot(data as ScreenshotFrame);
     });
 
     return () => {
@@ -591,7 +627,11 @@ export function useAgentSession(sessionIdParam?: string | null) {
       unsubscribers.forEach((unsub) => unsub());
       unsubscribeFrame();
     };
-  }, [handleSocketEvent, store, store.sessionId]);
+    // Re-run ONLY when the session changes or the socket (re)connects — never on
+    // every store mutation. Depending on socket.isConnected ensures we (re)join
+    // the session room and (re)subscribe once the socket is actually live, so the
+    // live browser frames are never missed due to a join-before-connect race.
+  }, [store.sessionId, socket.isConnected, handleSocketEvent]);
 
   const respondToClarification = useCallback(async (answers: string) => {
     const sId = sessionIdRef.current;
@@ -633,13 +673,17 @@ export function useAgentSession(sessionIdParam?: string | null) {
       return sessionId;
     } catch (error: any) {
       store.setPhase('failed');
+      const raw = error?.response?.data?.message || error?.message || String(error);
+      const friendly = humanizeError(raw);
+      store.setError({ message: friendly, source: 'gateway', timestamp: Date.now() });
       store.addLog({
         id: `start_err_${Date.now()}`,
         timestamp: Date.now(),
         level: 'error',
         source: 'Gateway',
-        message: `Failed to trigger orchestrations run: ${error.message || error}`,
+        message: friendly,
       });
+      toast.error(friendly, { duration: 8000 });
       throw error;
     }
   }, [store]);
@@ -708,6 +752,7 @@ export function useAgentSession(sessionIdParam?: string | null) {
   return {
     sessionId: store.sessionId,
     phase: store.phase,
+    lastError: store.lastError,
     goal: store.goal,
     parsedGoal: store.parsedGoal,
     plan: store.plan,

@@ -154,7 +154,7 @@ No markdown, no explanation, no backticks outside the JSON.`;
           { role: 'user', content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 4000,
+        max_tokens: 3000,
         response_format: { type: 'json_object' },
       });
 

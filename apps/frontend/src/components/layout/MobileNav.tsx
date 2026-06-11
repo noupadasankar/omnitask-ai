@@ -181,9 +181,7 @@ export function MobileNav() {
                                   : 'border border-transparent hover:bg-white/[0.04]',
                               )}
                             >
-                              {isActive && (
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-red-500" />
-                              )}
+
 
                               <div className="flex items-center justify-center w-10 h-10 flex-shrink-0">
                                 <Icon

@@ -17,8 +17,22 @@ async function bootstrap() {
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
 
   app.setGlobalPrefix('api');
+  const allowedOrigins = [frontendUrl, 'http://localhost:3000'];
   app.enableCors({
-    origin: [frontendUrl, 'http://localhost:3000'],
+    // Allow the configured frontend plus any localhost/127.0.0.1 origin (any port)
+    // so dev works regardless of how the browser resolves "localhost" or which
+    // port Next.js lands on (3000/3001/etc). Non-browser requests have no Origin.
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   });
 

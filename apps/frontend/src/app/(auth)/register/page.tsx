@@ -30,7 +30,12 @@ export default function RegisterPage() {
       toast.success('Identity verified. Access granted.');
       router.push('/dashboard');
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Registration sequence failed');
+      const msg =
+        error?.response?.data?.message ||
+        (!error?.response
+          ? 'Cannot reach the server. Make sure the backend is running on http://localhost:4000.'
+          : 'Registration sequence failed');
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }

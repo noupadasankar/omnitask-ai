@@ -144,3 +144,21 @@ docs/diagrams/*.tmp
 ########################################
 scripts/local/
 debug/
+
+########################################
+# Python virtualenvs
+########################################
+.venv/
+venv/
+**/.venv/
+**/venv/
+__pycache__/
+*.pyc
+
+########################################
+# job_agent reference tree (NOT repo code)
+# Standalone reference agent. Contains live session cookies, resume
+# PDFs, a local .env, and a committed venv — must never be committed.
+# Kept on disk for pattern reference only.
+########################################
+apps/browser-py/skills/job_agent/

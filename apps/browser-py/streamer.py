@@ -8,8 +8,11 @@ screenshot loop if CDP screencast is unavailable.
 
 import asyncio
 import base64
+import logging
 
 from events import EventPublisher, now_ms
+
+log = logging.getLogger("browser-py.stream")
 
 
 class Screencaster:
@@ -31,6 +34,8 @@ class Screencaster:
         self._cdp = None
         self._running = False
         self._fallback_task: asyncio.Task | None = None
+        # Throttle publish-failure logging so a dead Redis doesn't spam per-frame.
+        self._publish_errors = 0
 
     async def start(self) -> None:
         try:
@@ -47,8 +52,11 @@ class Screencaster:
                 },
             )
             self._running = True
-        except Exception:
-            # CDP not available — degrade to interval screenshots.
+            log.info("Screencast started for %s (CDP, %dx%d q%d)", self.session_id, self.width, self.height, self.quality)
+        except Exception as exc:
+            # CDP not available — degrade to interval screenshots. Log the reason
+            # so a silent stream failure is debuggable from the worker logs.
+            log.warning("CDP screencast unavailable for %s (%s) — falling back to interval screenshots", self.session_id, exc)
             self._running = True
             self._fallback_task = asyncio.create_task(self._interval_loop())
 
@@ -76,8 +84,8 @@ class Screencaster:
                     "Page.screencastFrameAck",
                     {"sessionId": params.get("sessionId")},
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            self._note_publish_error(exc)
 
     async def _interval_loop(self) -> None:
         while self._running:
@@ -97,9 +105,22 @@ class Screencaster:
                             "height": self.height,
                         },
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                self._note_publish_error(exc)
             await asyncio.sleep(0.5)
+
+    def _note_publish_error(self, exc: Exception) -> None:
+        # Surface the first failure immediately, then every 20th, so a blank
+        # live view always has a corresponding worker-log explanation without
+        # flooding the logs when (e.g.) Redis is unreachable for the whole run.
+        if self._publish_errors == 0 or self._publish_errors % 20 == 0:
+            log.warning(
+                "Failed to publish screenshot:frame for %s (%s) — live view will be blank (count=%d)",
+                self.session_id,
+                exc,
+                self._publish_errors + 1,
+            )
+        self._publish_errors += 1
 
     def _safe_url(self) -> str:
         try:
