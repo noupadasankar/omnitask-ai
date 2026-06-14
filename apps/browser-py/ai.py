@@ -18,10 +18,23 @@ class AIClient:
         self.api_key = os.environ.get("OPENAI_API_KEY")
         self.model = os.environ.get("PY_LLM_MODEL", "gpt-4o-mini")
         self._client = None
+        self._openai_ok: bool | None = None
 
     @property
     def available(self) -> bool:
-        return bool(self.api_key)
+        # Needs both a key AND the openai package installed. The package is
+        # optional (the platform runs LLM-free by default), so probe it once and
+        # cache — this keeps AI-using skills from retrying a doomed import per call.
+        if not self.api_key:
+            return False
+        if self._openai_ok is None:
+            try:
+                import openai  # noqa: F401
+                self._openai_ok = True
+            except Exception:
+                log.info("openai package not installed — AI features disabled, using DOM heuristics.")
+                self._openai_ok = False
+        return self._openai_ok
 
     def _ensure(self):
         if self._client is None:

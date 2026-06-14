@@ -34,8 +34,12 @@ class Screencaster:
         self._cdp = None
         self._running = False
         self._fallback_task: asyncio.Task | None = None
+        self._title_task: asyncio.Task | None = None
         # Throttle publish-failure logging so a dead Redis doesn't spam per-frame.
         self._publish_errors = 0
+        # Cached page title — refreshed in the interval loop, not per CDP frame
+        # (page.title() is async/costly), and surfaced in the live view tab.
+        self._title = ""
 
     async def start(self) -> None:
         try:
@@ -59,6 +63,51 @@ class Screencaster:
             log.warning("CDP screencast unavailable for %s (%s) — falling back to interval screenshots", self.session_id, exc)
             self._running = True
             self._fallback_task = asyncio.create_task(self._interval_loop())
+        # Refresh the live-view tab title alongside whichever frame path is active.
+        self._title_task = asyncio.create_task(self._title_loop())
+
+    async def rebind(self, page) -> None:
+        """Point the stream at a NEW page after a crash-recovery relaunch, without
+        tearing down the run. Stops the old CDP session and starts a fresh one so
+        the live view keeps flowing on the recovered page."""
+        # Tear down the old CDP screencast (the old page is dead/closed).
+        if self._cdp is not None:
+            try:
+                await self._cdp.send("Page.stopScreencast")
+            except Exception:
+                pass
+            self._cdp = None
+        if self._fallback_task is not None:
+            self._fallback_task.cancel()
+            self._fallback_task = None
+        self.page = page
+        # Restart capture on the new page (CDP, with interval fallback).
+        try:
+            self._cdp = await self.page.context.new_cdp_session(self.page)
+            self._cdp.on("Page.screencastFrame", self._on_frame)
+            await self._cdp.send(
+                "Page.startScreencast",
+                {
+                    "format": "jpeg",
+                    "quality": self.quality,
+                    "maxWidth": self.width,
+                    "maxHeight": self.height,
+                    "everyNthFrame": 1,
+                },
+            )
+            log.info("Screencast rebound to recovered page for %s", self.session_id)
+        except Exception as exc:
+            log.warning("Rebind CDP failed for %s (%s) — interval fallback", self.session_id, exc)
+            self._fallback_task = asyncio.create_task(self._interval_loop())
+
+    async def _title_loop(self) -> None:
+        while self._running:
+            try:
+                if not self.page.is_closed():
+                    self._title = await self.page.title()
+            except Exception:
+                pass
+            await asyncio.sleep(1.0)
 
     def _on_frame(self, params: dict) -> None:
         # Sync CDP callback → schedule async publish + ack on the running loop.
@@ -75,6 +124,7 @@ class Screencaster:
                     "timestamp": now_ms(),
                     "base64": params.get("data", ""),
                     "url": self._safe_url(),
+                    "title": self._title,
                     "width": self.width,
                     "height": self.height,
                 },
@@ -101,6 +151,7 @@ class Screencaster:
                             "timestamp": now_ms(),
                             "base64": base64.b64encode(buf).decode(),
                             "url": self._safe_url(),
+                            "title": self._title,
                             "width": self.width,
                             "height": self.height,
                         },
@@ -132,6 +183,8 @@ class Screencaster:
         self._running = False
         if self._fallback_task is not None:
             self._fallback_task.cancel()
+        if self._title_task is not None:
+            self._title_task.cancel()
         if self._cdp is not None:
             try:
                 await self._cdp.send("Page.stopScreencast")

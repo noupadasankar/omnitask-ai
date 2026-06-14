@@ -40,6 +40,13 @@ class EventPublisher:
             # Never let a telemetry publish failure abort execution.
             pass
 
+    async def is_cancelled(self, session_id: str) -> bool:
+        """True once the backend requests a stop (`omnitask:job:cancel:<sid>`)."""
+        try:
+            return (await self.client.get(f"omnitask:job:cancel:{session_id}")) is not None
+        except Exception:
+            return False
+
     async def wait_for_approval(self, session_id: str, step_index: int, timeout_ms: int) -> bool:
         """Poll `omnitask:approval:<sid>:<idx>` for APPROVED/DENIED (set by relay)."""
         key = f"omnitask:approval:{session_id}:{step_index}"

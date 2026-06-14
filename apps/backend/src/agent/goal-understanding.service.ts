@@ -42,6 +42,13 @@ export class GoalUnderstandingService {
   ): Promise<ParsedGoal> {
     this.logger.log(`Parsing natural language goal: "${naturalLanguageGoal}"`);
 
+    // No LLM configured → skip the guaranteed-failing call and route by local
+    // keyword intent detection (zero-token, no vendor dependency).
+    if (!this.hasLlm()) {
+      this.logger.warn('No LLM API key configured — using local heuristic goal parser.');
+      return this.heuristicParse(naturalLanguageGoal);
+    }
+
     const systemPrompt = `You are an expert natural language understanding agent for a general-purpose autonomous web AI assistant.
 Your goal is to parse user request prompts and decompose them into structured tasks.
 
@@ -104,22 +111,64 @@ ${userContext?.preferences ? `User Preferences: ${JSON.stringify(userContext.pre
 
       return parsed;
     } catch (error: any) {
-      this.logger.error(`Goal parsing failed: ${error.message}`);
-      return {
-        taskType: 'general',
-        intent: naturalLanguageGoal,
-        entities: {},
-        constraints: [],
-        preferredWebsites: [],
-        estimatedComplexity: 'moderate',
-        requiresPayment: false,
-        requiresLogin: false,
-        sensitiveData: false,
-        ambiguityScore: 0.5,
-        clarifyingQuestions: [],
-        confidence: 0.5,
-      };
+      // LLM unavailable (no credits / 402, rate limit, network). Don't fail the
+      // run — route by local keyword intent detection so the domain skill still
+      // executes (e.g. a job goal → the Job Agent).
+      this.logger.warn(
+        `Goal parsing via LLM unavailable (${error.message}) — using local heuristic parser.`,
+      );
+      return this.heuristicParse(naturalLanguageGoal);
     }
+  }
+
+  /** True when a usable LLM API key is configured. */
+  private hasLlm(): boolean {
+    const key =
+      this.configService.get<string>('OPENAI_API_KEY') ||
+      this.configService.get<string>('OPENROUTER_API_KEY') ||
+      '';
+    return key.trim().length > 0;
+  }
+
+  /**
+   * Zero-token intent detection used when the LLM is unavailable. Maps the goal
+   * to a taskType via keywords so AgentRouter routes it to the right local skill
+   * (job/shopping/food/travel/research). Falls back to 'general' (web skill).
+   */
+  private heuristicParse(goal: string): ParsedGoal {
+    const g = ` ${goal.toLowerCase()} `;
+    const has = (re: RegExp) => re.test(g);
+
+    let taskType: ParsedGoal['taskType'] = 'general';
+    let requiresLogin = false;
+
+    if (has(/\b(job|jobs|apply|applying|hiring|career|vacanc|recruit|naukri|linkedin|instahyre|hirist|cutshort)\b/)) {
+      taskType = 'job_search';
+      requiresLogin = true;
+    } else if (has(/\b(flight|hotel|book(ing)?\s+(a\s+)?(ticket|train|bus|cab)|irctc|makemytrip|goibibo|trip|travel)\b/)) {
+      taskType = 'flight_search';
+    } else if (has(/\b(order|swiggy|zomato|restaurant|pizza|biryani|food|meal)\b/)) {
+      taskType = 'food_order';
+    } else if (has(/\b(buy|shop|cart|amazon|flipkart|myntra|ajio|price|cheapest|deal)\b/)) {
+      taskType = has(/\bcompare|cheapest|price\b/) ? 'price_comparison' : 'shopping';
+    } else if (has(/\b(research|find|summar|compare|analy|report|news|learn about)\b/)) {
+      taskType = 'research';
+    }
+
+    return {
+      taskType,
+      intent: goal,
+      entities: {},
+      constraints: [],
+      preferredWebsites: [],
+      estimatedComplexity: 'moderate',
+      requiresPayment: false,
+      requiresLogin,
+      sensitiveData: false,
+      ambiguityScore: 0.3,
+      clarifyingQuestions: [],
+      confidence: 0.55,
+    };
   }
 
   async refineGoal(

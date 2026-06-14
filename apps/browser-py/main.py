@@ -22,7 +22,13 @@ from playwright.async_api import async_playwright
 from events import EventPublisher, PY_JOB_LIST, PY_ALIVE_KEY
 from executor import run_job
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [browser-py] %(message)s")
+# Console is quiet by default — the live browser view in the dashboard is the
+# place to watch a run. Set BROWSER_PY_LOG_LEVEL=INFO (or DEBUG) to restore the
+# Python terminal output. Playwright's own chatter is pinned to WARNING.
+_LOG_LEVEL = getattr(
+    logging, os.environ.get("BROWSER_PY_LOG_LEVEL", "WARNING").upper(), logging.WARNING
+)
+logging.basicConfig(level=_LOG_LEVEL, format="%(asctime)s [browser-py] %(message)s")
 log = logging.getLogger("browser-py")
 
 
@@ -39,18 +45,20 @@ def _has_display() -> bool:
 
 
 def _resolve_headless() -> bool:
-    """Decide headless, with explicit env override and a safe no-display fallback."""
-    override = os.environ.get("PLAYWRIGHT_HEADLESS")
-    if override is not None:
-        return override.strip().lower() == "true"
+    """Headless by default — NO desktop window opens; the dashboard live view
+    ("Chromium box") is the only surface, fed by the screencast stream.
 
-    # No explicit setting → headful when a display exists, else fall back.
-    if _has_display():
-        return False
-    log.warning(
-        "No display detected (DISPLAY/WAYLAND_DISPLAY unset) — falling back to "
-        "headless. Set PLAYWRIGHT_HEADLESS=false with xvfb to force headful."
-    )
+    Set PLAYWRIGHT_HEADLESS=false to ALSO open a real Chromium window (requires a
+    display; the request is ignored on bare servers/CI where it would crash).
+    """
+    override = os.environ.get("PLAYWRIGHT_HEADLESS")
+    if override is not None and override.strip().lower() == "false":
+        if _has_display():
+            return False
+        log.warning(
+            "PLAYWRIGHT_HEADLESS=false but no display detected — staying headless."
+        )
+    # Default (and safe fallback): headless, so no window ever opens unexpectedly.
     return True
 
 
@@ -74,6 +82,12 @@ def _redis_client() -> "redis.Redis":
         port=int(os.environ.get("REDIS_PORT", "6379")),
         password=os.environ.get("REDIS_PASSWORD") or None,
         decode_responses=True,
+        # Resilience for the long-lived BRPOP/heartbeat loop on Windows: keep the
+        # socket alive, health-check idle connections, and retry transient
+        # timeouts instead of surfacing them as errors every minute.
+        socket_keepalive=True,
+        health_check_interval=30,
+        retry_on_timeout=True,
     )
 
 
@@ -111,34 +125,43 @@ async def main() -> None:
     client = _redis_client()
     publisher = EventPublisher(client)
     asyncio.create_task(_heartbeat(client))
+    # Background profile GC: trims caches over quota, closes idle browsers, and
+    # (opt-in) evicts stale profiles. Self-disables when BROWSER_GC_INTERVAL_S=0.
+    from browser_manager import run_profile_gc_loop
+    asyncio.create_task(run_profile_gc_loop())
 
     async with async_playwright() as pw:
         log.info("Python browser engine connected (headless=%s) — waiting on %s", headless, PY_JOB_LIST)
-        while True:
-            try:
-                item = await client.brpop(PY_JOB_LIST, timeout=5)
-            except Exception as err:  # noqa: BLE001 — keep the loop alive on Redis blips
-                log.warning("BRPOP failed: %s", err)
-                await asyncio.sleep(1)
-                continue
+        try:
+            while True:
+                try:
+                    item = await client.brpop(PY_JOB_LIST, timeout=5)
+                except Exception as err:  # noqa: BLE001 — keep the loop alive on Redis blips
+                    log.warning("BRPOP failed: %s", err)
+                    await asyncio.sleep(1)
+                    continue
 
-            if not item:
-                continue
+                if not item:
+                    continue
 
-            _key, raw = item
-            try:
-                job = json.loads(raw)
-            except Exception:
-                log.warning("Dropping unparseable job payload")
-                continue
+                _key, raw = item
+                try:
+                    job = json.loads(raw)
+                except Exception:
+                    log.warning("Dropping unparseable job payload")
+                    continue
 
-            # The engine — not the API — owns the headful/headless decision,
-            # because only this process knows whether it has a display. Override
-            # whatever Node sent.
-            job.setdefault("config", {})
-            job["config"]["headless"] = headless
+                # The engine — not the API — owns the headful/headless decision,
+                # because only this process knows whether it has a display. Override
+                # whatever Node sent.
+                job.setdefault("config", {})
+                job["config"]["headless"] = headless
 
-            asyncio.create_task(_handle_job(job, publisher, pw))
+                asyncio.create_task(_handle_job(job, publisher, pw))
+        finally:
+            # Close every per-user persistent context cleanly on shutdown.
+            from browser_manager import shutdown_browser_manager
+            await shutdown_browser_manager()
 
 
 if __name__ == "__main__":

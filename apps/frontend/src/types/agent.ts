@@ -39,6 +39,7 @@ export interface ScreenshotFrame {
   width: number;
   height: number;
   url?: string;
+  title?: string;
   cursorPosition?: { x: number; y: number };
   highlightedElement?: { x: number; y: number; width: number; height: number };
 }

@@ -6,7 +6,7 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import { ApprovalStatus, RiskLevel, TaskStatus } from '@prisma/client';
+import { ApprovalStatus, RiskLevel, TaskStatus, JobApplicationStatus, Prisma } from '@prisma/client';
 import * as Redis from 'ioredis';
 import { SelfHealingService } from '../agent/self-healing.service';
 import {
@@ -26,6 +26,7 @@ import {
 } from '../agent/runtime/session-manager.service';
 
 export const WORKER_EVENT_CHANNEL = 'omnitask:worker:events';
+export const WORKER_INPUT_CHANNEL = 'omnitask:worker:input';
 
 interface WorkerEventPayload {
   sessionId: string;
@@ -38,6 +39,9 @@ interface WorkerEventPayload {
 export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkerEventRelayService.name);
   private readonly subscriber: Redis.Redis;
+  // Dedicated publisher — the subscriber connection is in subscribe mode and
+  // can't issue publish/set, so input forwarding uses its own client.
+  private readonly publisher: Redis.Redis;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -54,18 +58,23 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => SessionManagerService))
     private readonly sessionManager: SessionManagerService,
   ) {
-    this.subscriber = new Redis.Redis({
+    const redisOptions = {
       host: process.env.REDIS_HOST || 'localhost',
       port: Number(process.env.REDIS_PORT) || 6379,
       password: process.env.REDIS_PASSWORD || undefined,
       lazyConnect: true,
-    });
+    };
+    this.subscriber = new Redis.Redis(redisOptions);
+    this.publisher = new Redis.Redis(redisOptions);
   }
 
   async onModuleInit() {
     try {
       await this.subscriber.connect();
       await this.subscriber.subscribe(WORKER_EVENT_CHANNEL);
+      await this.publisher.connect().catch((error: any) =>
+        this.logger.warn(`[Relay] Input publisher connect failed: ${error.message}`),
+      );
 
       this.subscriber.on('message', async (_channel: string, message: string) => {
         try {
@@ -94,6 +103,37 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       await this.subscriber.quit();
     } catch {
       // ignore shutdown errors
+    }
+    try {
+      await this.publisher.quit();
+    } catch {
+      // ignore shutdown errors
+    }
+  }
+
+  /**
+   * Forward a "Take Control" input event from the dashboard to the Python
+   * engine driving the live browser. The InputController (apps/browser-py)
+   * subscribes to WORKER_INPUT_CHANNEL and dispatches onto the active page.
+   *
+   * Coordinates are expected pre-scaled to the frame's CSS pixels (e.g.
+   * 1280x800) by the frontend, so they map 1:1 onto the Playwright viewport.
+   * Fire-and-forget: a failed publish must never break the socket handler.
+   */
+  async sendInput(
+    sessionId: string,
+    input: Record<string, any>,
+  ): Promise<void> {
+    try {
+      if (this.publisher.status !== 'ready') {
+        await this.publisher.connect().catch(() => undefined);
+      }
+      await this.publisher.publish(
+        WORKER_INPUT_CHANNEL,
+        JSON.stringify({ sessionId, ...input }),
+      );
+    } catch (error: any) {
+      this.logger.debug(`[Relay] sendInput failed: ${error.message}`);
     }
   }
 
@@ -175,6 +215,9 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
         return;
       case 'agent:result':
         await this.handleAgentResult(payload);
+        return;
+      case 'application:result':
+        await this.handleApplicationResult(payload);
         return;
       default:
         return;
@@ -467,6 +510,7 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
         id: true,
         taskId: true,
         userId: true,
+        status: true,
         startedAt: true,
         totalSteps: true,
         plan: true,
@@ -475,6 +519,9 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    // A user-cancelled session is terminal — don't let the engine's natural
+    // completion flip CANCELLED to COMPLETED/FAILED.
+    const cancelled = session?.status === 'CANCELLED';
     const rawSuccess = payload.data.status === 'success';
     const completedAt = new Date(payload.timestamp);
 
@@ -512,26 +559,28 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       ? null
       : 'Worker execution completed with failed or denied steps';
 
-    await this.prisma.executionSession.update({
-      where: { id: payload.sessionId },
-      data: {
-        status: rawSuccess ? 'COMPLETED' : 'FAILED',
-        completedAt,
-        currentStepIndex: Number(payload.data.stepsCompleted || 0),
-        errorMessage,
-      },
-    }).catch(() => undefined);
-
-    if (session?.taskId) {
-      await this.prisma.task.update({
-        where: { id: session.taskId },
+    if (!cancelled) {
+      await this.prisma.executionSession.update({
+        where: { id: payload.sessionId },
         data: {
-          status: rawSuccess ? TaskStatus.COMPLETED : TaskStatus.FAILED,
+          status: rawSuccess ? 'COMPLETED' : 'FAILED',
           completedAt,
+          currentStepIndex: Number(payload.data.stepsCompleted || 0),
           errorMessage,
-          result: payload.data as any,
         },
       }).catch(() => undefined);
+
+      if (session?.taskId) {
+        await this.prisma.task.update({
+          where: { id: session.taskId },
+          data: {
+            status: rawSuccess ? TaskStatus.COMPLETED : TaskStatus.FAILED,
+            completedAt,
+            errorMessage,
+            result: payload.data as any,
+          },
+        }).catch(() => undefined);
+      }
     }
 
     if (session) {
@@ -735,6 +784,79 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       data: { kind, count: items.length, items },
       tags: [kind],
     });
+  }
+
+  /**
+   * Persist a job-application result emitted by the job_application skill.
+   *
+   * Upserts the JobApplication row (unique on userId+portal+externalJobId, so
+   * re-applies dedupe) and links it to the ExecutionSession. The socket event
+   * itself is already forwarded to the dashboard before this switch.
+   */
+  private async handleApplicationResult(payload: WorkerEventPayload): Promise<void> {
+    const d = payload.data || {};
+    const userId =
+      (typeof d.userId === 'string' && d.userId) ||
+      (await this.lookupUserId(payload.sessionId));
+    const portal = typeof d.portal === 'string' ? d.portal : null;
+    const externalJobId = d.externalJobId ? String(d.externalJobId) : null;
+    if (!userId || !portal || !externalJobId) {
+      this.logger.warn(
+        `[Relay] application:result missing keys (user=${!!userId} portal=${portal} jobId=${externalJobId})`,
+      );
+      return;
+    }
+
+    const status = this.toJobStatus(d.status);
+    const reasons = Array.isArray(d.matchReasons) ? d.matchReasons : [];
+    const base = {
+      title: typeof d.title === 'string' ? d.title : 'Unknown role',
+      company: typeof d.company === 'string' ? d.company : null,
+      location: typeof d.location === 'string' ? d.location : null,
+      url: typeof d.url === 'string' ? d.url : null,
+      score: Number.isFinite(Number(d.score)) ? Number(d.score) : 0,
+      matchReasons: reasons as unknown as Prisma.InputJsonValue,
+      status,
+      sessionId: payload.sessionId,
+      errorMessage: typeof d.error === 'string' ? d.error : null,
+      ...(status === JobApplicationStatus.APPLIED
+        ? { appliedAt: new Date(payload.timestamp) }
+        : {}),
+    };
+
+    await this.prisma.jobApplication
+      .upsert({
+        where: { userId_portal_externalJobId: { userId, portal, externalJobId } },
+        update: base,
+        create: { userId, portal, externalJobId, ...base },
+      })
+      .catch((err) =>
+        this.logger.warn(`[Relay] application:result upsert failed: ${err.message}`),
+      );
+  }
+
+  private async lookupUserId(sessionId: string): Promise<string | null> {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sessionId },
+      select: { userId: true },
+    });
+    return session?.userId || null;
+  }
+
+  private toJobStatus(value: unknown): JobApplicationStatus {
+    switch (value) {
+      case 'APPLIED':
+        return JobApplicationStatus.APPLIED;
+      case 'FAILED':
+        return JobApplicationStatus.FAILED;
+      case 'PENDING_APPROVAL':
+        return JobApplicationStatus.PENDING_APPROVAL;
+      case 'MATCHED':
+        return JobApplicationStatus.MATCHED;
+      case 'SKIPPED':
+      default:
+        return JobApplicationStatus.SKIPPED;
+    }
   }
 
   private async recordLearningFromSession(

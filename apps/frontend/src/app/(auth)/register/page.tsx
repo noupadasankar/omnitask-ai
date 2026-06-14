@@ -6,15 +6,17 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
-import { Cpu, Loader2, Lock, Mail, User, ShieldCheck } from 'lucide-react';
+import { Cpu, Loader2, Lock, Mail, User, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import { authService } from '@/services/auth.service';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { GoogleButton } from '@/components/auth/GoogleButton';
 
 export default function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { setUser } = useAuth();
@@ -27,7 +29,7 @@ export default function RegisterPage() {
       const res = await authService.register({ name, email, password });
       localStorage.setItem('token', res.data.accessToken);
       setUser(res.data.user);
-      toast.success('Identity verified. Access granted.');
+      toast.success('Account created. Welcome to OmniTask AI!');
       router.push('/dashboard');
     } catch (error: any) {
       const msg =
@@ -63,13 +65,13 @@ export default function RegisterPage() {
         <div className="relative z-10">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-mono text-emerald-400">
             <ShieldCheck className="h-3 w-3" />
-            NEW_OPERATOR_CLEARANCE
+            FREE ACCOUNT
           </div>
           <p className="max-w-md text-3xl font-medium leading-tight text-white">
-            Join the most advanced autonomous orchestration engine.
+            Start automating with AI agents in minutes.
           </p>
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-zinc-500">
-            Configure your admin profile to start building, deploying, and monitoring AI task clusters.
+            Create your account to start building, deploying, and monitoring autonomous AI workflows.
           </p>
         </div>
       </div>
@@ -92,8 +94,8 @@ export default function RegisterPage() {
           </div>
 
           <div className="hidden lg:block text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-white">Request Access</h2>
-            <p className="mt-2 text-sm text-zinc-400">Create your operator profile.</p>
+            <h2 className="text-3xl font-bold tracking-tight text-white">Create Account</h2>
+            <p className="mt-2 text-sm text-zinc-400">Set up your free account to get started.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 mt-8">
@@ -107,7 +109,7 @@ export default function RegisterPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="System Operator"
+                  placeholder="John Smith"
                   required
                   className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
                 />
@@ -124,7 +126,7 @@ export default function RegisterPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@omnitask.ai"
+                  placeholder="you@example.com"
                   required
                   className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
                 />
@@ -138,14 +140,22 @@ export default function RegisterPage() {
                   <Lock className="h-4 w-4 text-zinc-600" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   minLength={8}
                   placeholder="Min 8 characters"
                   required
-                  className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
+                  className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-11 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-zinc-600 transition-colors hover:text-zinc-300"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -162,18 +172,30 @@ export default function RegisterPage() {
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating Identity...
+                  Creating Account...
                 </>
               ) : (
-                'Create Identity'
+                'Create Account'
               )}
             </button>
           </form>
 
+          {/* DIVIDER */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/[0.08]" />
+            <span className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
+              or sign up with
+            </span>
+            <div className="h-px flex-1 bg-white/[0.08]" />
+          </div>
+
+          {/* GOOGLE OAUTH */}
+          <GoogleButton label="Sign up with Google" />
+
           <p className="text-center text-sm text-zinc-500">
-            Already cleared?{' '}
+            Already have an account?{' '}
             <Link href="/login" className="font-semibold text-white hover:text-red-400 transition-colors">
-              Initialize session
+              Sign in
             </Link>
           </p>
         </motion.div>

@@ -1,7 +1,6 @@
 // frontend/src/services/websocket.service.ts
 
 import { io, Socket } from 'socket.io-client';
-import { ExecutionEventType, ScreenshotFrame } from '@/types/agent';
 
 export class WebSocketService {
   private socket: Socket | null = null;
@@ -96,6 +95,16 @@ export class WebSocketService {
   cancelSession(sessionId: string): void {
     if (!this.socket) return;
     this.socket.emit('session:cancel', { sessionId });
+  }
+
+  /**
+   * Forward a "Take Control" input event (click/move/scroll/key) from the live
+   * view to the backend, which relays it to the browser engine. Coordinates
+   * must be pre-scaled to the frame's native CSS pixels. Fire-and-forget.
+   */
+  sendBrowserInput(sessionId: string, input: Record<string, any>): void {
+    if (!this.socket) return;
+    this.socket.emit('browser:input', { sessionId, ...input });
   }
 
   on(event: string, callback: (data: any) => void): () => void {

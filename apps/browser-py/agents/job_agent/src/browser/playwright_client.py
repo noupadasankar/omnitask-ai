@@ -29,9 +29,32 @@ class PlaywrightClient:
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.logger = logging.getLogger(__name__)
-    
+        # When True this client wraps a browser owned by someone else (the
+        # OmniTask Playwright engine). start()/close() then become no-ops so the
+        # shared page + CDP screencast keep running for the live view.
+        self._external = False
+
+    @classmethod
+    def from_page(cls, page: Page, context: BrowserContext) -> "PlaywrightClient":
+        """Wrap an already-launched page/context instead of launching our own.
+
+        Used when the job agent runs as a skill inside the OmniTask browser
+        engine: the engine owns the browser lifecycle and live streaming, and
+        the portals drive this shared page through the same client surface.
+        """
+        client = cls()
+        client.page = page
+        client.context = context
+        client.browser = context.browser if context else None
+        client.playwright = None
+        client._external = True
+        return client
+
     async def start(self):
         """Start the browser."""
+        # Injected mode: the browser is already running — nothing to launch.
+        if self._external:
+            return
         self.playwright = await async_playwright().start()
         
         # Try to use system Chrome first (more reliable for OAuth)
@@ -81,6 +104,10 @@ class PlaywrightClient:
     
     async def close(self):
         """Close the browser."""
+        # Injected mode: the OmniTask engine owns this browser and will close it
+        # (and stop the live-view screencast) — never tear it down from here.
+        if self._external:
+            return
         if self.page:
             await self.page.close()
         if self.context:

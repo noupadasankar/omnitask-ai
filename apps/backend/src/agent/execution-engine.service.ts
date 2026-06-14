@@ -379,19 +379,31 @@ export class ExecutionEngineService implements OnModuleDestroy {
         }
       }
 
-      // When no site plugin matched, let the Python engine run a real AI skill
-      // (web search → extract → AI synthesis) instead of a weak generic plan.
+      // When no site plugin matched, let the Python engine run a real local skill
+      // (search → extract → act, rule-based) instead of a weak generic plan.
+      // 'job' → the full autonomous applier (login → score → fill → approve →
+      // submit), so a dashboard goal like "apply to AI jobs" runs end-to-end.
+      // It stays safe via JOB_AGENT_DRY_RUN (default) + approve-before-submit and
+      // uses the user's tuned preferences.yaml when no explicit prefs are passed.
       const SKILL_BY_DOMAIN: Record<string, string> = {
-        job: 'job',
+        job: 'job_application',
         shopping: 'shopping',
         food: 'food',
         research: 'research',
         social: 'social',
       };
+      // These domains are implemented by the autonomous Python skills (real
+      // search / extract / apply, LLM-optional), NOT the inline site-plugin step
+      // plans. The registry domain agents resolve with plugin ids
+      // (matchedSkills != []), which would otherwise suppress the skill route and
+      // run an incomplete inline plan — e.g. only "Initialize runtime" when the
+      // LLM planner is unavailable, or a broken "navigate: missing URL". So
+      // whenever a domain HAS a Python skill, always use it (executor.py ignores
+      // the step plan when a skill is set). Domains without one (travel) keep the
+      // inline plugin plan; an unmatched goal falls back to the 'generic' skill.
       const skillHint =
-        routed.matchedSkills.length === 0
-          ? SKILL_BY_DOMAIN[routed.domain] || 'generic'
-          : undefined;
+        SKILL_BY_DOMAIN[routed.domain] ||
+        (routed.matchedSkills.length === 0 ? 'generic' : undefined);
 
       const dispatched = await this.workerDispatcher.dispatch(
         sessionId,
@@ -414,6 +426,27 @@ export class ExecutionEngineService implements OnModuleDestroy {
           },
         });
         return;
+      }
+
+      // A skill-routed goal (job/shopping/food/research/social) can ONLY run on
+      // the Python engine — that's where the real automation AND the smooth CDP
+      // live stream live. The inline Puppeteer fallback can only replay a step
+      // plan with choppy screenshots, which for a skill goal means a broken run
+      // (e.g. "navigate: missing URL") + a useless screenshot view. So fail fast
+      // with an actionable message instead of silently degrading.
+      if (skillHint) {
+        const message =
+          'Live browser engine (Python) is offline — the autonomous run and the ' +
+          'live Chromium stream both run there. Start it:  python apps/browser-py/main.py  ' +
+          '(headful), then relaunch. The browser will open and stream live.';
+        this.logger.error(
+          `[ExecutionEngine] Python engine offline for skill "${skillHint}" — refusing inline fallback (no live stream / cannot run skill).`,
+        );
+        this.wsGateway.emitToSession(sessionId, 'execution:event', {
+          type: 'log:error' as ExecutionEventType,
+          data: { source: 'WorkerRuntime', message },
+        });
+        throw new Error(message);
       }
 
       // Step 3: Create browser session (inline fallback)

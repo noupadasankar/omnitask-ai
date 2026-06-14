@@ -162,3 +162,5 @@ __pycache__/
 # Kept on disk for pattern reference only.
 ########################################
 apps/browser-py/skills/job_agent/
+# Per-user persistent Chromium profiles (cookies, sessions) — never commit.
+apps/browser-py/profiles/

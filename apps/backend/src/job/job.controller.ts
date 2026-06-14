@@ -7,10 +7,13 @@ import {
   Query,
   Request,
   UseGuards,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JobApplicationStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { JobAgentService } from './job-agent.service';
+import { JobAgentService, LaunchJobAgentInput } from './job-agent.service';
 import { JobTrackerService } from './job-tracker.service';
 import { JobPreferenceService, JobPreferenceInput } from './job-preference.service';
 import { JobPosting } from './job-match-scorer.service';
@@ -41,6 +44,29 @@ export class JobController {
   @Post('evaluate')
   async evaluate(@Request() req: any, @Body() body: { jobs: JobPosting[] }) {
     return this.jobAgent.evaluateBatch(req.user.id, body.jobs || []);
+  }
+
+  // ─── Resume upload ───────────────────────────────────────────────────────────
+
+  @Post('resume')
+  @UseInterceptors(FileInterceptor('resume'))
+  async uploadResume(
+    @Request() req: any,
+    @UploadedFile() file: any,
+  ) {
+    return this.jobAgent.saveResume(file);
+  }
+
+  // ─── Launch an autonomous apply run (live view + approve-before-submit) ───────
+
+  @Post('launch')
+  async launch(@Request() req: any, @Body() body: LaunchJobAgentInput) {
+    return this.jobAgent.launch(req.user.id, body || {});
+  }
+
+  @Post('stop')
+  async stop(@Request() req: any, @Body() body: { sessionId: string }) {
+    return this.jobAgent.stop(req.user.id, body.sessionId);
   }
 
   // ─── Application tracking ────────────────────────────────────────────────────

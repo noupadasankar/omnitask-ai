@@ -12,6 +12,7 @@ from .base import SkillContext
 from .research import ResearchSkill
 from .shopping import ShoppingSkill
 from .job import JobSkill
+from .job_application import JobApplicationSkill
 from .food import FoodSkill
 from .social import SocialSkill
 from .generic import GenericSkill
@@ -23,6 +24,7 @@ _SKILLS = {
     "research": ResearchSkill(),
     "shopping": ShoppingSkill(),
     "job": JobSkill(),
+    "job_application": JobApplicationSkill(),
     "food": FoodSkill(),
     "social": SocialSkill(),
     "generic": GenericSkill(),
@@ -32,6 +34,9 @@ _SKILLS = {
 _ALIASES = {
     "job_search": "job",
     "jobs": "job",
+    "auto_apply": "job_application",
+    "apply_jobs": "job_application",
+    "job_apply": "job_application",
     "shop": "shopping",
     "price_comparison": "shopping",
     "food_order": "food",

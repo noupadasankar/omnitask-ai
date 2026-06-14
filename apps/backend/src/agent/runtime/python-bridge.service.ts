@@ -46,6 +46,14 @@ export class PythonBridgeService implements OnModuleDestroy {
     await this.client.lpush(PY_JOB_LIST, JSON.stringify(job));
   }
 
+  /**
+   * Request a cooperative stop for a running session. The Python engine polls
+   * `omnitask:job:cancel:<sessionId>` between candidates and halts when set.
+   */
+  async cancel(sessionId: string): Promise<void> {
+    await this.client.set(`omnitask:job:cancel:${sessionId}`, '1', 'EX', 600);
+  }
+
   async onModuleDestroy() {
     try {
       await this.client.quit();

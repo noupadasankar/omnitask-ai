@@ -25,11 +25,7 @@ import { MultiAgentCoordinatorService } from './multi-agent-coordinator.service'
 import { TaskReplayService } from './task-replay.service';
 import { ScheduledTaskService } from './scheduled-task.service';
 
-// Advanced enterprise additions
 import { PuppeteerProvider } from './providers/puppeteer-provider.service';
-import { ElementExtractionService } from './element-extraction.service';
-import { SessionPersistenceService } from './session-persistence.service';
-import { ReplanningService } from './replanning.service';
 import { ZomatoAdapter } from './domain-adapters/zomato-adapter.service';
 import { SwiggyAdapter } from './domain-adapters/swiggy-adapter.service';
 
@@ -105,15 +101,11 @@ import { LearningModule } from '../learning/learning.module';
     TravelDomainAgent,
     ResearchDomainAgent,
     SocialDomainAgent,
-    // Advanced additions
     {
       provide: 'BrowserProvider',
       useClass: PuppeteerProvider,
     },
     PuppeteerProvider,
-    ElementExtractionService,
-    SessionPersistenceService,
-    ReplanningService,
     ZomatoAdapter,
     SwiggyAdapter,
     // ─── NEW: Cognitive OS services ──────────────────────────────────────
@@ -147,11 +139,7 @@ import { LearningModule } from '../learning/learning.module';
     AgentRouterService,
     PlanOrchestratorService,
     AgentRegistryService,
-    // Advanced additions exports
     PuppeteerProvider,
-    ElementExtractionService,
-    SessionPersistenceService,
-    ReplanningService,
     ZomatoAdapter,
     SwiggyAdapter,
     // ─── NEW: Cognitive OS exports ───────────────────────────────────────

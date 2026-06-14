@@ -37,7 +37,6 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server!: Server;
 
   private readonly logger = new Logger(AgentGateway.name);
-  private sessionRooms = new Map<string, string>();
 
   constructor(
     @Inject(forwardRef(() => ExecutionEngineService))
@@ -74,7 +73,6 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     client.join(data.sessionId);
-    this.sessionRooms.set(client.id, data.sessionId);
     this.logger.log(`Client joined session: ${data.sessionId}`);
     return { success: true };
   }
@@ -85,7 +83,6 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     client.leave(data.sessionId);
-    this.sessionRooms.delete(client.id);
     this.logger.log(`Client left session: ${data.sessionId}`);
     return { success: true };
   }
@@ -134,6 +131,27 @@ export class AgentGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.error(`Approval response error: ${error.message}`);
       return { success: false, error: error.message };
     }
+  }
+
+  // ─── Take Control (remote input forwarding) ──────────────────────────────────
+  //
+  // When the user enables "Take Control" in the live view and clicks/types/
+  // scrolls on the canvas, the frontend emits `browser:input`. We forward it to
+  // the Python engine over Redis (WORKER_INPUT_CHANNEL); the InputController
+  // dispatches it onto the real Chromium page. High-frequency + fire-and-forget,
+  // so we don't await/ack to keep latency low.
+
+  @SubscribeMessage('browser:input')
+  async handleBrowserInput(
+    @MessageBody()
+    data: { sessionId: string } & Record<string, any>,
+    @ConnectedSocket() client: Socket,
+  ) {
+    const sessionId = data?.sessionId;
+    if (!sessionId) return { success: false, error: 'sessionId required' };
+    const { sessionId: _sid, ...input } = data;
+    await this.relay.sendInput(sessionId, input);
+    return { success: true };
   }
 
   // ─── Clarification ───────────────────────────────────────────────────────────

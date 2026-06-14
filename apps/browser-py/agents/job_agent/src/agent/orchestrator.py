@@ -23,19 +23,32 @@ from src.portals.linkedin import LinkedInPortal
 class JobAgentOrchestrator:
     """Orchestrates the entire job application process across multiple portals."""
     
-    def __init__(self, config_path: str = "config/preferences.yaml"):
+    def __init__(self, config_path: str = "config/preferences.yaml",
+                 bridge: Optional[object] = None,
+                 preferences_override: Optional[Dict] = None):
         """Initialize the orchestrator.
-        
+
         Args:
             config_path: Path to user preferences config file
+            bridge: Optional OmniTask integration bridge. When provided, the
+                agent runs as a skill inside the OmniTask browser engine: it
+                streams per-job application results and gates each submit through
+                the dashboard's approval panel instead of running headless/CLI.
+            preferences_override: Optional dict merged onto the YAML preferences
+                (roles/locations/keywords/limits/portals from the dashboard).
         """
         self.logger = get_logger("JobAgent")
         self.logger.info("🚀 Initializing Job Agent...")
-        
+
         # Load configurations
         self.user_preferences = load_config(config_path)
+        if preferences_override:
+            self._apply_preferences_override(preferences_override)
         self.portals_config = load_portals_config()
         self.env = load_env()
+
+        # OmniTask integration bridge (None in standalone CLI mode).
+        self.bridge = bridge
         
         # Initialize components
         self.db = DatabaseTracker()
@@ -51,9 +64,20 @@ class JobAgentOrchestrator:
         
         self.resume_parser = ResumeParser(resume_file)
         self.resume_data = self.resume_parser.parsed_data
-        
+
+        # Populate user_profile from parsed resume so portals use the
+        # uploaded file's contact info rather than any yaml defaults.
+        profile = self.user_preferences.setdefault('user_profile', {})
+        if not profile.get('name') and self.resume_data.get('name'):
+            profile['name'] = self.resume_data['name']
+        if not profile.get('email') and self.resume_data.get('email'):
+            profile['email'] = self.resume_data['email']
+        if not profile.get('phone') and self.resume_data.get('phone'):
+            profile['phone'] = self.resume_data['phone']
+
+        display_name = profile.get('name') or self.resume_data.get('email') or 'User'
         self.logger.info(f"📄 Resume loaded: {resume_file}")
-        self.logger.info(f"👤 User: {self.user_preferences['user_profile']['name']}")
+        self.logger.info(f"👤 User: {display_name}")
         
         # Browser will be initialized in run()
         self.browser: Optional[PlaywrightClient] = None
@@ -66,29 +90,43 @@ class JobAgentOrchestrator:
             'end_time': None
         }
     
-    async def run(self):
-        """Run the job application agent."""
+    async def run(self, page=None, context=None, dry_run=None):
+        """Run the job application agent.
+
+        Args:
+            page: Optional Playwright Page to drive (injected by the OmniTask
+                engine). When given, the agent reuses this live page instead of
+                launching its own browser, so the dashboard live view works.
+            context: The BrowserContext that owns `page` (for cookies/session).
+            dry_run: Override the env DRY_RUN flag (the dashboard defaults this
+                to True so a run can be watched without a real submit).
+        """
+        injected = page is not None
         try:
             self.results['start_time'] = datetime.now()
-            
-            # Initialize browser
-            self.logger.info("🌐 Starting browser...")
-            self.browser = PlaywrightClient(
-                headless=self.env.get('headless', False),
-                slow_mo=self.env.get('browser_slow_mo', 500)
-            )
-            await self.browser.start()
-            
+
+            # Initialize browser — or adopt the engine's live page when injected.
+            if injected:
+                self.logger.info("🌐 Using OmniTask live browser page")
+                self.browser = PlaywrightClient.from_page(page, context)
+            else:
+                self.logger.info("🌐 Starting browser...")
+                self.browser = PlaywrightClient(
+                    headless=self.env.get('headless', False),
+                    slow_mo=self.env.get('browser_slow_mo', 500)
+                )
+                await self.browser.start()
+
             # Get enabled portals
             enabled_portals = self.user_preferences.get('portals', {}).get('enabled', [])
             portal_priority = self.user_preferences.get('portals', {}).get('priority', enabled_portals)
-            
+
             # Calculate application limits (check both filters and preferences for compatibility)
             filters = self.user_preferences.get('filters', {})
             prefs = self.user_preferences.get('preferences', {})
             max_per_day = filters.get('max_applications_per_day') or prefs.get('max_applications_per_day', 50)
             max_per_portal = filters.get('max_applications_per_portal') or prefs.get('max_applications_per_portal', 10)
-            dry_run = self.env.get('dry_run', False)
+            dry_run = self.env.get('dry_run', False) if dry_run is None else dry_run
             
             if dry_run:
                 self.logger.warning("🧪 DRY RUN MODE - No applications will be submitted")
@@ -107,7 +145,12 @@ class JobAgentOrchestrator:
             for portal_name in portal_priority:
                 if portal_name not in enabled_portals:
                     continue
-                
+
+                # Stop requested from the dashboard — halt before the next portal.
+                if self.bridge is not None and await self.bridge.cancelled():
+                    self.logger.warning("🛑 Stop requested — halting run")
+                    break
+
                 # Check if we still have applications remaining
                 if self.results['total_applications'] >= remaining_today:
                     self.logger.info("✋ Daily limit reached")
@@ -188,8 +231,8 @@ class JobAgentOrchestrator:
         portal_class = portal_map.get(portal_name.lower())
         if not portal_class:
             return None
-        
-        return portal_class(
+
+        portal = portal_class(
             browser=self.browser,
             db=self.db,
             llm=self.llm,
@@ -198,6 +241,52 @@ class JobAgentOrchestrator:
             user_preferences=self.user_preferences,
             resume_data=self.resume_data
         )
+        # Hand the OmniTask bridge to the portal so it streams results + gates
+        # each submit through the dashboard (None → original standalone flow).
+        portal.bridge = self.bridge
+        return portal
+
+    def _apply_preferences_override(self, override: Dict) -> None:
+        """Merge dashboard-provided preferences onto the YAML config.
+
+        Maps the flat JobPreference shape (roles/locations/keywords/limits/
+        portals) onto the nested structure the rule-based matcher reads
+        (`preferences.*` + `filters.*` + `portals.*`).
+        """
+        prefs = self.user_preferences.setdefault('preferences', {})
+        filters = self.user_preferences.setdefault('filters', {})
+        portals = self.user_preferences.setdefault('portals', {})
+
+        if override.get('roles'):
+            prefs['roles'] = override['roles']
+        if override.get('locations'):
+            prefs['locations'] = override['locations']
+        if override.get('requiredKeywords') is not None:
+            filters['required_keywords'] = override['requiredKeywords']
+        if override.get('preferredKeywords') is not None:
+            filters['preferred_keywords'] = override['preferredKeywords']
+        if override.get('excludeKeywords') is not None:
+            filters['exclude_keywords'] = override['excludeKeywords']
+        if override.get('minScore') is not None:
+            filters['min_match_score'] = override['minScore']
+        if override.get('maxApplications') is not None:
+            filters['max_applications_per_day'] = override['maxApplications']
+            filters['max_applications_per_portal'] = override['maxApplications']
+        if override.get('portals'):
+            portals['enabled'] = override['portals']
+            portals['priority'] = override['portals']
+
+        # User profile (name/email/phone from the wizard)
+        if override.get('userProfile'):
+            up = override['userProfile']
+            profile = self.user_preferences.setdefault('user_profile', {})
+            for key in ('name', 'email', 'phone'):
+                if up.get(key):
+                    profile[key] = up[key]
+
+        # Portal credentials (auto-login in each portal's login() method)
+        if override.get('credentials'):
+            self.user_preferences['credentials'] = override['credentials']
     
     def _generate_report(self):
         """Generate and display execution report."""

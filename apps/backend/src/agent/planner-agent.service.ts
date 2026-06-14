@@ -146,6 +146,15 @@ No markdown, no explanation, no backticks outside the JSON.`;
 
     const userPrompt = this.buildUserPrompt(goal, context);
 
+    // No LLM key configured → don't attempt a guaranteed-failing call; the
+    // engine runs the local rule-based Python skill for the routed domain.
+    if (!this.hasLlm()) {
+      this.logger.warn(
+        'No LLM API key configured — using local deterministic planner (zero-token).',
+      );
+      return this.localFallbackPlan(goal);
+    }
+
     try {
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o',
@@ -182,9 +191,55 @@ No markdown, no explanation, no backticks outside the JSON.`;
 
       return enhancedPlan;
     } catch (error: any) {
-      this.logger.error(`Planning failed: ${error.message}`);
-      throw new Error(`Failed to create plan: ${error.message}`);
+      // The platform must not be hard-dependent on an external LLM. Any planner
+      // failure (no credits / 402, rate limit, network, invalid key) degrades to
+      // a local deterministic plan, and the Python engine runs the routed domain
+      // skill (rule-based, zero-token). The browser still launches + streams.
+      this.logger.warn(
+        `LLM planning unavailable (${error.message}) — falling back to local deterministic planner.`,
+      );
+      return this.localFallbackPlan(goal);
     }
+  }
+
+  /** True when a usable LLM API key is configured. */
+  private hasLlm(): boolean {
+    const key =
+      this.configService.get<string>('OPENAI_API_KEY') ||
+      this.configService.get<string>('OPENROUTER_API_KEY') ||
+      '';
+    return key.trim().length > 0;
+  }
+
+  /**
+   * Zero-token plan used when the LLM is unavailable. The steps are intentionally
+   * minimal: when the router found no site plugin, ExecutionEngine sets a
+   * `skillHint` from the domain and the Python executor runs that local skill
+   * (search/extract/apply), ignoring these steps. This keeps the platform
+   * functional with no external LLM dependency.
+   */
+  private localFallbackPlan(goal: string): AgentPlan {
+    return {
+      taskId: '',
+      goal,
+      steps: [
+        {
+          index: 0,
+          action: 'wait',
+          value: '800',
+          description: 'Initialize local agent runtime',
+          riskLevel: 'LOW',
+          requiresApproval: false,
+        },
+      ],
+      estimatedDuration: 60,
+      skillsUsed: [],
+      riskAssessment: {
+        overallRisk: 'MEDIUM',
+        reasons: ['Local deterministic plan (LLM unavailable) — domain skill will execute'],
+        requiresUserApproval: false,
+      },
+    };
   }
 
   async replanFromStep(
@@ -234,6 +289,11 @@ Provide skillName parameter matching the relevant universal skill from the regis
 
 Respond with JSON: { "steps": [...] }`;
 
+    if (!this.hasLlm()) {
+      this.logger.warn('No LLM API key configured — skipping replan (no new steps).');
+      return [];
+    }
+
     try {
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o',
@@ -256,8 +316,10 @@ Respond with JSON: { "steps": [...] }`;
       const result = JSON.parse(content);
       return this.validateSteps(result.steps || []);
     } catch (error: any) {
-      this.logger.error(`Replanning failed: ${error.message}`);
-      throw error;
+      // Don't abort the run if the LLM is unavailable — return no replacement
+      // steps and let the engine's other recovery paths handle the failure.
+      this.logger.warn(`Replanning unavailable (${error.message}) — no new steps.`);
+      return [];
     }
   }
 

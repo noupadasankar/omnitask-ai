@@ -5,9 +5,12 @@ import {
   UseGuards,
   Get,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   LoginDto,
@@ -16,6 +19,8 @@ import {
   RegisterDtoSchema,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { GoogleOAuthUser } from './guards/google.strategy';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 
 interface AuthenticatedRequest extends Request {
@@ -26,9 +31,16 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+interface GoogleRequest extends Request {
+  user: GoogleOAuthUser;
+}
+
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) { }
 
   // 🆕 Register
   @Post('register')
@@ -46,6 +58,35 @@ export class AuthController {
     @Body(new ZodValidationPipe(LoginDtoSchema)) loginDto: LoginDto,
   ) {
     return this.authService.login(loginDto);
+  }
+
+  // 🌐 Google OAuth — kick off the redirect to Google's consent screen
+  @Get('google')
+  @UseGuards(GoogleAuthGuard)
+  googleAuth() {
+    // Passport handles the redirect; this body never runs.
+  }
+
+  // 🌐 Google OAuth — callback: issue JWT and bounce back to the frontend
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  async googleAuthCallback(
+    @Req() req: GoogleRequest,
+    @Res() res: Response,
+  ) {
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
+
+    try {
+      const { accessToken } = await this.authService.validateOAuthLogin(
+        req.user,
+      );
+      return res.redirect(
+        `${frontendUrl}/auth/callback?token=${encodeURIComponent(accessToken)}`,
+      );
+    } catch {
+      return res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+    }
   }
 
   // 👤 Profile (protected)

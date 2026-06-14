@@ -2,6 +2,7 @@
 
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { WsReconnectBanner } from './WsReconnectBanner';
 import { SocketProvider } from '@/providers/SocketProvider';
 
 export function AppShell({
@@ -19,6 +20,9 @@ export function AppShell({
         <div className="flex flex-1 flex-col h-screen overflow-hidden">
           {/* TOPBAR - Fixed at top of main container */}
           <Topbar />
+
+          {/* WS reconnect notification — slides in on disconnect */}
+          <WsReconnectBanner />
 
           {/* MAIN CONTENT AREA - Only this part scrolls */}
           <main className="flex-1 overflow-y-auto p-6 lg:p-8 bg-zinc-950/20">

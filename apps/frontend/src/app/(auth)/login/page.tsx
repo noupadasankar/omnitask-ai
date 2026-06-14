@@ -1,21 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
-import { Cpu, Loader2, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Cpu, Loader2, Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import { GoogleButton } from '@/components/auth/GoogleButton';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
+
+  useEffect(() => {
+    if (searchParams.get('error') === 'oauth_failed') {
+      toast.error('Google sign-in failed. Please try again or use your password.');
+      router.replace('/login');
+    }
+  }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,7 +34,7 @@ export default function LoginPage() {
     try {
       await login(email, password);
       router.push('/dashboard');
-      toast.success('Authentication successful. Welcome to the Runtime.');
+      toast.success('Welcome back! Redirecting to dashboard...');
     } catch (error: any) {
       const msg =
         error?.response?.data?.message ||
@@ -89,12 +99,12 @@ export default function LoginPage() {
               <Cpu className="h-7 w-7 text-red-400" />
             </div>
             <h2 className="text-2xl font-bold text-white">OmniTask AI</h2>
-            <p className="mt-2 text-sm text-zinc-400">Sign in to the runtime</p>
+            <p className="mt-2 text-sm text-zinc-400">Sign in to your account</p>
           </div>
 
           <div className="hidden lg:block text-center">
             <h2 className="text-3xl font-bold tracking-tight text-white">Welcome Back</h2>
-            <p className="mt-2 text-sm text-zinc-400">Authenticate to access the runtime.</p>
+            <p className="mt-2 text-sm text-zinc-400">Sign in to your account to continue.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5 mt-8">
@@ -108,7 +118,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@omnitask.ai"
+                  placeholder="you@example.com"
                   required
                   className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
                 />
@@ -127,13 +137,21 @@ export default function LoginPage() {
                   <Lock className="h-4 w-4 text-zinc-600" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
+                  className="w-full rounded-xl border border-white/[0.07] bg-white/[0.02] py-3 pl-11 pr-11 text-sm text-white placeholder:text-zinc-600 focus:border-red-500/40 focus:bg-white/[0.04] focus:outline-none transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex items-center pr-4 text-zinc-600 transition-colors hover:text-zinc-300"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -154,17 +172,29 @@ export default function LoginPage() {
                 </>
               ) : (
                 <>
-                  Initialize Session
+                  Sign In
                   <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
             </button>
           </form>
 
+          {/* DIVIDER */}
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/[0.08]" />
+            <span className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
+              or continue with
+            </span>
+            <div className="h-px flex-1 bg-white/[0.08]" />
+          </div>
+
+          {/* GOOGLE OAUTH */}
+          <GoogleButton />
+
           <p className="text-center text-sm text-zinc-500">
-            New operator?{' '}
+            Don't have an account?{' '}
             <Link href="/register" className="font-semibold text-white hover:text-red-400 transition-colors">
-              Request access
+              Create account
             </Link>
           </p>
         </motion.div>

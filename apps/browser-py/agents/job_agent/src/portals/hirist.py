@@ -68,56 +68,51 @@ class HiristPortal(BasePortal):
             return False
     
     async def login(self) -> bool:
-        """Login to Hirist.
-        
-        Note: Requires manual login. Will wait for user to login.
-        """
+        """Login to Hirist — auto-fills credentials if provided, else waits for manual login."""
         try:
-            # Try going to base URL first to check if already logged in
             await self.browser.goto(self.base_url)
             await asyncio.sleep(3)
-            
-            # Check if already logged in
+
             if await self.verify_login():
                 self.logger.info("✅ Already logged in to Hirist!")
                 return True
-            
-            # Go to login page
+
             await self.browser.goto(self.login_url)
             await asyncio.sleep(3)
-            
-            # Check again after navigation
+
             if await self.verify_login():
                 self.logger.info("✅ Already logged in to Hirist!")
                 return True
-            
-            # Wait for manual login
-            self.logger.warning("=" * 60)
-            self.logger.warning("⚠️  MANUAL LOGIN REQUIRED FOR HIRIST")
-            self.logger.warning("=" * 60)
-            self.logger.warning("Please login to Hirist in the browser window:")
-            self.logger.warning("  1. Complete authentication (Google/Email)")
-            self.logger.warning("  2. Wait for page to fully load")
-            self.logger.warning("  3. You should see your profile/dashboard")
-            self.logger.warning("")
-            self.logger.warning("⏱️  Waiting up to 120 seconds for login completion...")
-            self.logger.warning("=" * 60)
-            
-            # Wait for login to complete
-            for i in range(24):  # 24 * 5 = 120 seconds
+
+            # Auto-fill credentials if provided via wizard
+            creds = self.user_preferences.get('credentials', {}).get('hirist', {})
+            if creds.get('email') and creds.get('password'):
+                self.logger.info("🔑 Auto-filling Hirist credentials...")
+                try:
+                    page = self.browser.get_page()
+                    await page.fill('input[type="email"]', creds['email'])
+                    await asyncio.sleep(0.5)
+                    await page.fill('input[type="password"]', creds['password'])
+                    await asyncio.sleep(0.5)
+                    await page.click('button[type="submit"]')
+                    await asyncio.sleep(4)
+                    if await self.verify_login():
+                        self.logger.info("✅ Auto-login to Hirist successful!")
+                        return True
+                    self.logger.warning("⚠️ Auto-login did not complete, falling back to manual wait...")
+                except Exception as e:
+                    self.logger.warning(f"Auto-login attempt failed: {e}, falling back to manual...")
+
+            # Manual login fallback
+            self.logger.warning("⚠️ Please login to Hirist in the browser window (120 s)...")
+            for i in range(24):
                 await asyncio.sleep(5)
-                
                 if await self.verify_login():
                     self.logger.info("✅ Login successful!")
                     await asyncio.sleep(2)
                     return True
-                
-                # Show progress
-                if (i + 1) % 4 == 0:
-                    remaining = 120 - ((i + 1) * 5)
-                    self.logger.debug(f"Still waiting... {remaining}s remaining")
-            
-            self.logger.error("❌ Login timeout for Hirist - please try running again")
+
+            self.logger.error("❌ Login timeout for Hirist")
             return False
             
         except Exception as e:

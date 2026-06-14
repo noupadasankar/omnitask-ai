@@ -67,6 +67,15 @@ export class VerifierAgentService {
       ? Math.round((summary.stepsCompleted / summary.totalSteps) * 100)
       : 0;
 
+    // The platform runs LLM-free by default. The LLM verifier is opt-in
+    // (ENABLE_LLM_VERIFIER=true + a key); otherwise use the deterministic
+    // heuristic so runs aren't blocked, the free token budget isn't burned, and
+    // successful LLM-free runs don't show a red "INTENT SCORE 0" panel.
+    if (!this.llmVerifierEnabled()) {
+      this.logger.log('VerifierAgent: LLM verifier disabled — heuristic verdict.');
+      return this.buildFallbackResult(summary, completionRate);
+    }
+
     const systemPrompt = `You are a senior autonomous AI systems verifier. Your job is to determine if an AI agent's execution actually satisfied the original user intent.
 
 You must think critically:
@@ -176,6 +185,9 @@ Based on the above, did the execution satisfy the user's original goal?`;
     goal: string,
     lastStepDescription: string,
   ): Promise<{ confidence: number; explanation: string; shouldContinue: boolean }> {
+    if (!this.llmVerifierEnabled()) {
+      return { confidence: 0.5, explanation: 'Vision verification disabled (LLM-free mode)', shouldContinue: true };
+    }
     try {
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o',
@@ -213,20 +225,44 @@ Output JSON: { "confidence": 0.0-1.0, "explanation": "brief assessment", "should
     }
   }
 
+  /** True only when the LLM verifier is explicitly enabled AND a key exists. */
+  private llmVerifierEnabled(): boolean {
+    return (
+      this.configService.get<string>('ENABLE_LLM_VERIFIER') === 'true' &&
+      this.hasLlm()
+    );
+  }
+
+  private hasLlm(): boolean {
+    const key =
+      this.configService.get<string>('OPENAI_API_KEY') ||
+      this.configService.get<string>('OPENROUTER_API_KEY') ||
+      '';
+    return key.trim().length > 0;
+  }
+
   private buildFallbackResult(summary: ExecutionSummary, completionRate: number): VerificationResult {
-    const score = completionRate;
-    const verified = score >= 70;
+    // Generous, deterministic verdict for LLM-free runs: a run that completed
+    // without failed steps or errors is ACCEPTED — even if completionRate math
+    // is 0 (a Python skill reports its outcome as items, not planned steps). Only
+    // flag failure when steps actually failed or errors were recorded.
+    const hasFailures = summary.stepsFailed > 0 || summary.errorHistory.length > 0;
+    const verified = !hasFailures;
+    const score = hasFailures ? Math.min(49, completionRate) : Math.max(80, completionRate);
     const deterministic = this.buildDeterministicEvidence(summary);
     return {
       verified,
-      confidence: verified ? 0.6 : 0.3,
+      confidence: verified ? 0.6 : 0.35,
       score,
-      summary: `Fallback assessment: ${completionRate}% of steps completed. Verifier LLM unavailable.`,
+      summary: verified
+        ? 'Execution completed without errors (heuristic verdict — LLM verifier off).'
+        : `Execution recorded ${summary.stepsFailed} failed step(s) (heuristic verdict).`,
       evidence: deterministic,
-      gaps: summary.errorHistory,
+      gaps: hasFailures ? summary.errorHistory : [],
       achievements: [`Completed ${summary.stepsCompleted} of ${summary.totalSteps} planned steps`],
       nextAction: verified ? 'accept' : (score >= 50 ? 'retry' : 'replan'),
-      reasoning: 'Fallback heuristic based on step completion rate. LLM verification was unavailable.',
+      reasoning:
+        'Deterministic verdict from execution telemetry (LLM verification disabled — running LLM-free).',
     };
   }
 

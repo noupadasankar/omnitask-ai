@@ -4,7 +4,12 @@ LLM Client for Job Matching and Decision Making
 
 from typing import Dict, List, Optional, Any
 import json
+import logging
 import re
+
+# Module logger — debug-level so match tracing stays off the console by default
+# (it still lands in the file log / shows when the level is lowered).
+log = logging.getLogger("browser-py.job_agent.match")
 
 
 class LLMClient:
@@ -165,8 +170,8 @@ class LLMClient:
         job_title_lower = job_title.lower()
         
         # Debug: log what we're matching
-        print(f"DEBUG: Matching job title: '{job_title}'")
-        print(f"DEBUG: Against {len(preferred_roles)} roles")
+        log.debug("Matching job title: '%s'", job_title)
+        log.debug("Against %d roles", len(preferred_roles))
         
         # Super lenient AI/ML keyword matching - if ANY of these appear, it's a match!
         ai_ml_keywords = [
@@ -179,14 +184,14 @@ class LLMClient:
         
         for keyword in ai_ml_keywords:
             if keyword in job_title_lower:
-                print(f"DEBUG: ✅ AI/ML KEYWORD MATCH: '{keyword}' found in '{job_title}'")
+                log.debug("AI/ML keyword match: '%s' found in '%s'", keyword, job_title)
                 return True
-        
+
         # First try exact substring match (most accurate)
         for role in preferred_roles:
             role_lower = role.lower()
             if role_lower in job_title_lower or job_title_lower in role_lower:
-                print(f"DEBUG: ✅ EXACT MATCH: '{role}' matched '{job_title}'")
+                log.debug("Exact match: '%s' matched '%s'", role, job_title)
                 return True
         
         # Then try keyword-based matching (more flexible)
@@ -198,10 +203,10 @@ class LLMClient:
             matched_keywords = sum(1 for keyword in role_keywords if keyword in job_title_lower)
             
             if matched_keywords >= 1:  # Just need ONE keyword to match
-                print(f"DEBUG: ✅ KEYWORD MATCH: '{role}' matched '{job_title}' ({matched_keywords} keywords)")
+                log.debug("Keyword match: '%s' matched '%s' (%d keywords)", role, job_title, matched_keywords)
                 return True
-        
-        print(f"DEBUG: ❌ NO MATCH found for '{job_title}'")
+
+        log.debug("No match found for '%s'", job_title)
         return False
     
     def _check_location_match(self, job_description: str, preferred_locations: List[str]) -> bool:

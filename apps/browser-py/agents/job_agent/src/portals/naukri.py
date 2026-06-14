@@ -35,32 +35,44 @@ class NaukriPortal(BasePortal):
             return False
     
     async def login(self) -> bool:
-        """Login to Naukri.
-        
-        Note: Requires manual login. Will wait for user to login.
-        """
+        """Login to Naukri — auto-fills credentials if provided, else waits for manual login."""
         try:
             await self.browser.goto(self.login_url)
             await asyncio.sleep(2)
-            
-            # Check if already logged in
+
             if await self.verify_login():
                 return True
-            
-            # Wait for manual login
-            self.logger.warning("⚠️ Please login to Naukri.com in the browser window")
-            self.logger.warning("You have 120 seconds to complete login...")
-            
-            # Wait for login to complete
-            for i in range(24):  # 24 * 5 = 120 seconds
+
+            # Auto-fill credentials if provided via wizard
+            creds = self.user_preferences.get('credentials', {}).get('naukri', {})
+            if creds.get('email') and creds.get('password'):
+                self.logger.info("🔑 Auto-filling Naukri credentials...")
+                try:
+                    page = self.browser.get_page()
+                    await page.fill('input[placeholder*="Email"]', creds['email'])
+                    await asyncio.sleep(0.5)
+                    await page.fill('input[type="password"]', creds['password'])
+                    await asyncio.sleep(0.5)
+                    await page.click('button[type="submit"]')
+                    await asyncio.sleep(3)
+                    if await self.verify_login():
+                        self.logger.info("✅ Auto-login to Naukri successful!")
+                        return True
+                    self.logger.warning("⚠️ Auto-login did not complete, falling back to manual wait...")
+                except Exception as e:
+                    self.logger.warning(f"Auto-login attempt failed: {e}, falling back to manual...")
+
+            # Manual login fallback
+            self.logger.warning("⚠️ Please login to Naukri.com in the browser window (120 s)...")
+            for i in range(24):
                 await asyncio.sleep(5)
                 if await self.verify_login():
                     self.logger.info("✅ Login detected!")
                     return True
-            
+
             self.logger.error("Login timeout for Naukri")
             return False
-            
+
         except Exception as e:
             self.logger.error(f"Error during Naukri login: {e}", exc_info=True)
             return False
@@ -131,7 +143,9 @@ class NaukriPortal(BasePortal):
                         jobs.append({
                             'role': title.strip(),
                             'company': company.strip(),
-                            'job_url': search_url,  # Same page for all
+                            # Unique per card so dedup / DB / approval don't collide
+                            # (the recommended-jobs URL is shared by every card).
+                            'job_url': f'{search_url}#card{idx}',
                             'job_id': f'naukri_{idx}',
                             'card_index': idx,  # Track which card to use
                             'portal': 'Naukri.com'
@@ -146,130 +160,14 @@ class NaukriPortal(BasePortal):
         return jobs
     
     async def process(self, max_applications: int = 5, dry_run: bool = False) -> int:
-        """CUSTOM RECURSIVE PROCESS for Naukri.
-        
-        Naukri checkbox workflow:
-        1. Get jobs from recommended page
-        2. Find ONE matching job
-        3. Click checkbox on left of job card
-        4. Click "Apply 1 Job" button (on right side of page)
-        5. Wait for redirect to confirmation page
-        6. Navigate back and refresh
-        7. Repeat
+        """Naukri recommended-jobs checkbox flow: the page reloads after each
+        apply, so use the shared single-page loop (search → next unseen match →
+        select checkbox → "Apply 1 Job" → repeat).
+
+        Per-job mechanics live in `search_jobs` (unique `job_url` per card) and
+        `apply_to_job` (checkbox + "Apply 1 Job" button).
         """
-        self.logger.portal_start(self.portal_name)
-        
-        # Check if already hit daily limit
-        today_count = self.db.get_applications_today(self.portal_name)
-        if today_count >= max_applications:
-            self.logger.info(f"Already hit limit for {self.portal_name} today: {today_count}")
-            return 0
-        
-        remaining = max_applications - today_count
-        
-        # Try to restore session
-        session_restored = await self.restore_session()
-        
-        # Login if session not restored
-        if not session_restored:
-            self.logger.session_new(self.portal_name)
-            login_success = await self.login()
-            if not login_success:
-                self.logger.error(f"Login failed for {self.portal_name}")
-                return 0
-            await self.save_session()
-        else:
-            self.logger.session_restored(self.portal_name)
-        
-        # RECURSIVE LOOP: Apply to one job, reload, repeat
-        while self.applications_count < remaining:
-            try:
-                # Search for jobs on recommended page
-                jobs = await self.search_jobs()
-                self.logger.info(f"Found {len(jobs)} jobs on {self.portal_name}")
-                
-                if not jobs:
-                    self.logger.info("No more jobs found - completing Naukri")
-                    break
-                
-                # Find FIRST matching job only
-                applied_this_round = False
-                for job in jobs:
-                    try:
-                        # Check if already applied
-                        if self.db.is_already_applied(job['job_url'] + f"#{job['card_index']}"):
-                            continue
-                        
-                        # Analyze job match
-                        match_result = self.llm.analyze_job_match(
-                            job.get('description', ''),
-                            job.get('role', ''),
-                            job.get('company', ''),
-                            self.user_preferences,
-                            self.resume_data
-                        )
-                        
-                        job['match_score'] = match_result['match_score']
-                        
-                        self.logger.info(f"📋 Evaluating: {job['role']} at {job['company']}")
-                        self.logger.info(f"   Score: {match_result['match_score']}/100")
-                        
-                        if not match_result['should_apply']:
-                            self.logger.job_skipped(f"{job['role']} - Score: {match_result['match_score']}")
-                            continue
-                        
-                        self.logger.job_found(self.portal_name, job['company'], job['role'])
-                        
-                        # Apply to THIS job only (checkbox workflow)
-                        if not dry_run:
-                            success = await self.apply_to_job(job)
-                            
-                            if success:
-                                # Save to database
-                                self.db.add_application(
-                                    portal=self.portal_name,
-                                    company=job['company'],
-                                    role=job['role'],
-                                    job_url=job['job_url'] + f"#{job['card_index']}",
-                                    job_id=job.get('job_id'),
-                                    job_description=job.get('description'),
-                                    location=job.get('location'),
-                                    salary=job.get('salary'),
-                                    match_score=job['match_score'],
-                                    application_method='automated'
-                                )
-                                
-                                self.logger.job_applied(self.portal_name, job['company'], job['role'])
-                                self.applications_count += 1
-                                applied_this_round = True
-                                
-                                # Wait 3 seconds before reloading
-                                self.logger.info("⏳ Waiting 3 seconds before refreshing...")
-                                await asyncio.sleep(3)
-                                
-                                # Break to reload page for next job
-                                break
-                        else:
-                            self.logger.info(f"[DRY RUN] Would apply to: {job['role']}")
-                            self.applications_count += 1
-                            applied_this_round = True
-                            break
-                    
-                    except Exception as e:
-                        self.logger.error(f"Error processing job {job.get('role', 'Unknown')}: {e}")
-                        continue
-                
-                # If no jobs were applied this round, we're done
-                if not applied_this_round:
-                    self.logger.info("No more matching jobs - completing Naukri")
-                    break
-                
-            except Exception as e:
-                self.logger.error(f"Error in Naukri recursive loop: {e}", exc_info=True)
-                break
-        
-        self.logger.portal_complete(self.portal_name, self.applications_count)
-        return self.applications_count
+        return await self._process_single_page(max_applications, dry_run)
     
     async def _extract_job_from_card(self, card) -> Dict:
         """Extract job details from a job card element."""

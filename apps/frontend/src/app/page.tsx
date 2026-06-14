@@ -486,20 +486,144 @@ export default function HomePage() {
       </AnimatePresence>
 
       {/* ===================================================== */}
-      {/* FOOTER */}
+      {/* STATS BAR  — social proof, not in hero or features   */}
       {/* ===================================================== */}
-      <footer className="border-t border-white/10 py-10 bg-transparent">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 md:flex-row">
-          <div className="flex items-center gap-3">
-            <Bot className="h-5 w-5 text-red-400" />
-            <span className="font-medium text-white">OmniTask AI</span>
+      <section className="border-t border-white/[0.05] bg-transparent">
+        <div className="mx-auto max-w-7xl px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          {[
+            { value: '4',     label: 'Specialized Agents',  sub: 'Planner · Browser · Verifier · Supervisor', color: 'text-red-400' },
+            { value: '98.2%', label: 'Execution Success',   sub: 'Across all workflow types',                  color: 'text-emerald-400' },
+            { value: '<20ms', label: 'Checkpoint Latency',  sub: 'Write-to-store, Redis-backed',               color: 'text-cyan-400' },
+            { value: '∞',     label: 'Task Domains',        sub: 'Browser · API · File · Form · Data',         color: 'text-purple-400' },
+          ].map((s, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07 }}
+              viewport={{ once: true }}
+            >
+              <p className={`text-4xl font-black font-mono ${s.color}`}>{s.value}</p>
+              <p className="mt-2 text-sm font-bold text-white">{s.label}</p>
+              <p className="mt-1 text-xs text-zinc-600">{s.sub}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ===================================================== */}
+      {/* PRE-FOOTER CTA — re-engage before they leave          */}
+      {/* ===================================================== */}
+      <section className="border-t border-white/[0.05]">
+        <div className="relative mx-auto max-w-7xl px-6 py-24 text-center overflow-hidden">
+          {/* ambient glow */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="h-96 w-96 rounded-full bg-red-500/8 blur-[120px]" />
           </div>
-          <p className="text-sm text-zinc-500">Autonomous AI Execution Platform © 2026</p>
-          <div className="flex items-center gap-3 text-zinc-500">
-            <Command className="h-4 w-4" />
-            <span className="text-sm">Mission Control for AI Agents</span>
+          <div className="relative z-10">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-red-500/20 bg-red-500/10 px-4 py-1.5 text-xs font-bold text-red-300 uppercase tracking-widest">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+              All agents online · System ready
+            </div>
+            <h2 className="mx-auto max-w-3xl text-4xl md:text-5xl font-black tracking-[-0.04em] text-white leading-tight">
+              Ready to deploy your first<br />
+              <span className="text-gradient">autonomous workflow?</span>
+            </h2>
+            <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-500 leading-relaxed">
+              One sentence is all it takes. OmniTask parses your goal, builds the execution graph,
+              launches a real browser, and hands you back verified results.
+            </p>
+            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <Link href="/register">
+                <Button className="group h-14 rounded-2xl bg-red-500 px-10 text-base font-semibold hover:bg-red-600 shadow-2xl shadow-red-500/20">
+                  Start Building Free
+                  <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link href="/login">
+                <Button variant="ghost" className="h-14 rounded-2xl border border-white/10 bg-white/[0.03] px-10 text-base text-zinc-300 hover:bg-white/[0.06]">
+                  Sign In to Dashboard
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
+      </section>
+
+      {/* ===================================================== */}
+      {/* FOOTER                                                */}
+      {/* ===================================================== */}
+      <footer className="border-t border-white/[0.06] bg-transparent">
+
+        {/* ── Nav columns ── */}
+        <div className="mx-auto max-w-7xl px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
+
+       
+
+          {/* Platform */}
+          <div>
+            <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Platform</p>
+            <ul className="space-y-3">
+              {[
+                { label: 'Dashboard',     href: '/dashboard' },
+                { label: 'Job Automation',href: '/jobs' },
+                { label: 'Analytics',     href: '/analytics' },
+                { label: 'Task History',  href: '/history' },
+                { label: 'Agent Registry',href: '/agents' },
+              ].map((l) => (
+                <li key={l.href}>
+                  <Link href={l.href} className="text-xs text-zinc-500 hover:text-white transition-colors font-medium">
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Capabilities */}
+          <div>
+            <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Capabilities</p>
+            <ul className="space-y-3">
+              {[
+                'Multi-Agent Orchestration',
+                'Human Approval Gate',
+                'Execution Graph Engine',
+                'Live Runtime Console',
+                'Autonomous Automation',
+                'Realtime Observability',
+              ].map((c) => (
+                <li key={c} className="flex items-center gap-2">
+                  <Check className="h-2.5 w-2.5 text-emerald-500 flex-shrink-0" />
+                  <span className="text-xs text-zinc-500 font-medium">{c}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Agent System */}
+          <div>
+            <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Agent System</p>
+            <ul className="space-y-3">
+              {[
+                { name: 'PlannerAgent',      color: 'bg-red-500' },
+                { name: 'BrowserAgent',      color: 'bg-blue-500' },
+                { name: 'VerifierAgent',     color: 'bg-emerald-500' },
+                { name: 'GoalUnderstanding', color: 'bg-cyan-500' },
+                { name: 'SelfHealing',       color: 'bg-amber-500' },
+                { name: 'DriftDetector',     color: 'bg-purple-500' },
+              ].map((a) => (
+                <li key={a.name} className="flex items-center gap-2">
+                  <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${a.color}`} />
+                  <span className="text-xs text-zinc-500 font-mono">{a.name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* ── Brand baseline ── */}
+        
+
       </footer>
     </div>
   );

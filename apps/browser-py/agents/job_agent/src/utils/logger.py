@@ -4,6 +4,7 @@ Logging configuration and utilities
 
 import logging
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -29,7 +30,12 @@ class AgentLogger:
         # Create logger
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.DEBUG)
-        
+
+        # Don't bubble up to the root "browser-py" logger — otherwise every line
+        # is printed twice (once here, once by main.py's handler). The dashboard
+        # already receives these via the bridge, so the console stays clean.
+        self.logger.propagate = False
+
         # Remove existing handlers
         self.logger.handlers = []
         
@@ -57,19 +63,31 @@ class AgentLogger:
                 '%(levelname)-8s %(message)s'
             )
         
-        # File handler (daily log files)
+        # File handler (daily log files) — UTF-8 so emoji/symbols persist.
         log_file = os.path.join(
             log_dir,
             f"agent_{datetime.now().strftime('%Y%m%d')}.log"
         )
-        file_handler = logging.FileHandler(log_file)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(file_formatter)
-        
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+
+        # Console handler — quiet by default so the live view in the dashboard is
+        # the single place to watch a run. Set JOB_AGENT_LOG_LEVEL=INFO/DEBUG to
+        # restore terminal output. Forced UTF-8 so emoji never crash the stream
+        # on Windows consoles (cp1252 would raise UnicodeEncodeError otherwise).
+        console_level = getattr(
+            logging,
+            os.environ.get("JOB_AGENT_LOG_LEVEL", "ERROR").upper(),
+            logging.ERROR,
+        )
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(console_level)
         console_handler.setFormatter(console_formatter)
+        try:
+            console_handler.stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
         
         # Add handlers
         self.logger.addHandler(file_handler)

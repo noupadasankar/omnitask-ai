@@ -1,184 +1,75 @@
 user_profile:
-  name: "Sasumana Vinay Kumar"
-  email: "sasumanavinaykumar@gmail.com"
-  phone: "+91 9908276025"
-  current_location: "India, Remote"
-  
+  name: ""
+  email: ""
+  phone: ""
+  current_location: ""
+
 preferences:
-  roles:
-    # Core AI/ML Roles
-    - "AI Engineer"
-    - "Senior AI ML Engineer"
-    - "Machine Learning Engineer"
-    - "Deep Learning Engineer"
-    - "Applied AI Engineer"
-    - "Applied Machine Learning Engineer"
-    - "Artificial Intelligence Engineer"
-    - "Machine Learning Scientist"
-    - "AI Research Engineer"
-    - "AI Software Engineer"
-    - "AI Solutions Engineer"
-    - "AI Systems Engineer"
-    - "AI Platform Engineer"
-    - "AI Infrastructure Engineer"
-    - "ML Platform Engineer"
-    - "ML Systems Engineer"
-    - "ML Production Engineer"
-    - "AI Deployment Engineer"
-    - "AI Optimization Engineer"
-    - "AI Performance Engineer"
-    
-    # Computer Vision Roles
-    - "Computer Vision Engineer"
-    - "Computer Vision Research Engineer"
-    - "Computer Vision Scientist"
-    - "Video Analytics Engineer"
-    - "Video AI Engineer"
-    - "Vision AI Engineer"
-    - "Perception Engineer"
-    - "Visual Intelligence Engineer"
-    - "Image Processing Engineer"
-    - "Video Processing Engineer"
-    - "Autonomous Vision Engineer"
-    - "Edge AI Vision Engineer"
-    - "Video Understanding Researcher"
-    
-    # Generative AI / LLM Roles
-    - "Generative AI Engineer"
-    - "LLM Engineer"
-    - "Applied LLM Engineer"
-    - "Prompt Engineer"
-    - "Multimodal AI Engineer"
-    - "Foundation Model Engineer"
-    - "AI Agent Engineer"
-    - "Conversational AI Engineer"
-    - "AI Copilot Engineer"
-    - "AI Automation Engineer"
-    
-    # Research Roles
-    - "AI Research Scientist"
-    - "Machine Learning Researcher"
-    - "Applied AI Researcher"
-    - "Deep Learning Research Engineer"
-    - "Multimodal AI Researcher"
-    
-    # Data Science Roles
-    - "Data Scientist"
-    - "Applied Data Scientist"
-    - "AI Data Scientist"
-    - "AI Analytics Engineer"
-    
-    # Domain-Specific Roles
-    - "Sports Analytics Engineer"
-    - "Media AI Engineer"
-    - "Broadcast AI Engineer"
-    - "Multimedia AI Engineer"
-    - "Streaming AI Engineer"
-    
-    # Senior/Lead Roles
-    - "Senior AI Engineer"
-    - "Senior ML Engineer"
-    - "Senior AI ML Engineer"
-    - "Staff Machine Learning Engineer"
-    - "Lead AI Engineer"
-    - "Lead Machine Learning Engineer"
-    - "Senior Applied AI Engineer"
-    - "Senior Applied Scientist"
-    - "Principal AI Engineer"
-    - "Lead Computer Vision Engineer"
-    - "Founding AI Engineer"
-    - "AI Product Engineer"
-    
-    # MLOps
-    - "MLOps Engineer"
-  
+  roles: []
+
   locations:
     - "Remote"
     - "Work From Home"
     - "Hybrid"
-    - "Bangalore"
-    - "Hyderabad"
-    - "Mumbai"
-    - "Pune"
-  
-  experience_years: 4.5
+
+  experience_years: 0
   notice_period: "30 days"
-  expected_salary_min: 38  # in LPA
-  expected_salary_max: 40  # in LPA
-  
+  expected_salary_min: 0  # in LPA
+  expected_salary_max: 0  # in LPA
+
 filters:
-  min_salary: 35  # in LPA
-  max_applications_per_day: 50
-  max_applications_per_portal: 20  # Increased to maximize applications (agent stops at 50/day total)
-  
+  min_salary: 0  # in LPA
+  max_applications_per_day: 20
+  max_applications_per_portal: 10
+
   # Companies to avoid
-  exclude_companies:
-    - "Example Company to Exclude"
-  
+  exclude_companies: []
+
   # Must-have keywords in job description
-  required_keywords:
-    - "machine learning"
-    - "deep learning"
-    - "AI"
-  
+  required_keywords: []
+
   # Nice-to-have keywords
-  preferred_keywords:
-    - "computer vision"
-    - "generative ai"
-    - "pytorch"
-    - "tensorflow"
-    - "llm"
-    - "nlp"
-    - "video analytics"
-    - "transformers"
-    - "yolo"
-    - "gpt"
-    - "gemini"
-    - "rag"
-    - "mlops"
-  
+  preferred_keywords: []
+
   # Keywords that disqualify a job
   exclude_keywords:
-    - "junior"
-    - "fresher"
     - "intern"
-  
+    - "fresher"
+
   # Minimum match score (0-100) to apply
   min_match_score: 60
 
 application_settings:
-  # Answer common application questions
   common_answers:
-    current_ctc: "26 LPA"
-    expected_ctc: "38-40 LPA"
+    current_ctc: ""
+    expected_ctc: ""
     notice_period: "30 days"
-    reason_for_change: "Seeking opportunities to work on cutting-edge AI/ML projects and scale GenAI solutions"
-    willing_to_relocate: "Yes, prefer Remote but open to relocation for the right opportunity"
+    reason_for_change: "Seeking new opportunities aligned with my skills and career goals"
+    willing_to_relocate: "Yes"
     cover_letter_template: |
       Dear Hiring Manager,
-      
-      I am excited to apply for the {role} position at {company}. With {experience} years of experience
-      in AI software development, I believe I would be a great fit for this role.
-      
+
+      I am excited to apply for the {role} position at {company}. With {experience} years of experience,
+      I believe I would be a great fit for this role.
+
       {custom_message}
-      
+
       I look forward to discussing how I can contribute to your team.
-      
+
       Best regards,
       {name}
 
 portals:
   enabled:
-    - "naukri"      # Disabled for LinkedIn testing
-    - "instahyre"   # Disabled for LinkedIn testing
-    - "hirist"      # Disabled for LinkedIn testing
-    - "cutshort"    # Disabled temporarily - needs selector tuning
-    - "linkedin"      # ENABLED for testing Easy Apply workflow
-    # - "shine"       # Enable after testing
-  
-  priority: # Order in which to check portals
+    - "linkedin"
+    - "naukri"
+    - "instahyre"
+    - "hirist"
+    - "cutshort"
+
+  priority:
     - "linkedin"
     - "instahyre"
     - "naukri"
     - "hirist"
-    # - "cutshort"
+    - "cutshort"

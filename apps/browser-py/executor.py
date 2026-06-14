@@ -11,6 +11,8 @@ import os
 
 from events import EventPublisher, now_ms
 from streamer import Screencaster
+from input_control import InputController
+from browser_manager import get_browser_manager
 from dom import extract_raw_dom
 
 USER_AGENT = (
@@ -26,10 +28,9 @@ STEALTH_JS = """
 }
 """
 
-# Headful-oriented launch args. Headful lowers bot-detection (real window, real
-# GPU/AudioContext fingerprint) which is why job portals behave better here.
-# The live view is produced by CDP screencast and works in BOTH modes — headful
-# is a stealth choice, not a streaming requirement.
+# Chromium launch flags. The engine runs HEADLESS by default (no desktop window —
+# the dashboard live view is the only surface), so these flags + STEALTH_JS reduce
+# bot-detection without a real window. The CDP screencast streams in both modes.
 LAUNCH_ARGS = [
     "--disable-infobars",
     "--disable-dev-shm-usage",
@@ -41,6 +42,88 @@ LAUNCH_ARGS = [
 ]
 
 ACTION_TIMEOUT = 15_000
+
+# Max automatic crash-recovery relaunches per run, so a reproducibly-crashing
+# page can't loop forever. Override with BROWSER_MAX_RECOVERIES.
+_MAX_RECOVERIES = int(os.environ.get("BROWSER_MAX_RECOVERIES", "2"))
+
+
+def _is_crash_error(err: Exception) -> bool:
+    """Heuristic: did this step fail because the page/context died (renderer
+    crash, target closed, browser closed) rather than a normal automation error?"""
+    msg = str(err).lower()
+    return any(s in msg for s in (
+        "crash", "target closed", "target page, context or browser has been closed",
+        "browser has been closed", "page has been closed", "connection closed",
+    ))
+
+
+class _LiveSession:
+    """Mutable holder for the live page + its stream/input bindings, so the step
+    loop can swap to a recovered page after a crash without unwinding the run."""
+
+    def __init__(self, manager, user_id, headless, publisher, session_id):
+        self.manager = manager
+        self.user_id = user_id
+        self.headless = headless
+        self.publisher = publisher
+        self.session_id = session_id
+        self.page = None
+        self.streamer = None
+        self.input_ctl = None
+        self.recoveries = 0
+        # Serialize recovery so the crash handler and the step loop can't both
+        # relaunch at once.
+        self._lock = asyncio.Lock()
+
+    async def recover(self) -> bool:
+        """Relaunch a fresh page in the SAME persistent context (session intact),
+        then rebind the stream + remote input to it. Returns True on success."""
+        async with self._lock:
+            if self.recoveries >= _MAX_RECOVERIES:
+                return False
+            self.recoveries += 1
+            attempt = self.recoveries
+            await self.publisher.publish(self.session_id, "browser:recovering", {
+                "sessionId": self.session_id, "attempt": attempt,
+            })
+            try:
+                # new_page() reuses the warm persistent context (same cookies/login);
+                # if that context itself died, BrowserManager relaunches the profile.
+                _ctx, page = await self.manager.new_page(self.user_id, headless=self.headless)
+                old = self.page
+                self.page = page
+                if self.streamer is not None:
+                    await self.streamer.rebind(page)
+                if self.input_ctl is not None:
+                    self.input_ctl.rebind(page)
+                if old is not None:
+                    try:
+                        await old.close()
+                    except Exception:
+                        pass
+                await self.publisher.publish(self.session_id, "browser:recovered", {
+                    "sessionId": self.session_id, "attempt": attempt,
+                })
+                await self.publisher.publish(self.session_id, "worker:browser_state", {"state": "RUNNING"})
+                return True
+            except Exception as exc:  # noqa: BLE001 — recovery is best-effort
+                await self.publisher.publish(self.session_id, "browser:recovery_failed", {
+                    "sessionId": self.session_id, "message": str(exc),
+                })
+                return False
+
+
+async def _recover_if_idle(live) -> None:
+    """Recover from a crash that happened while no step was executing (e.g. the
+    user was driving the live view). Best-effort; the step loop handles crashes
+    that occur mid-step itself."""
+    try:
+        await live.recover()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 
 
 def _fire(coro) -> None:
@@ -231,19 +314,62 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
     # backend never guesses these — see SessionManagerService.
     await publisher.publish(session_id, "worker:browser_state", {"state": "INITIALIZING"})
 
-    browser = None
     streamer = None
     page = None
+    input_ctl = None
+    live = None
 
     try:
-        browser = await pw.chromium.launch(headless=headless, args=LAUNCH_ARGS)
-        context = await browser.new_context(viewport=viewport, user_agent=USER_AGENT)
-        await context.add_init_script(STEALTH_JS)
-        page = await context.new_page()
+        # Per-user PERSISTENT profile: stays logged in across runs/restarts and is
+        # reused (no relaunch per run). Strictly isolated per user — never shared.
+        manager = get_browser_manager(
+            pw,
+            launch_args=LAUNCH_ARGS,
+            user_agent=USER_AGENT,
+            stealth_js=STEALTH_JS,
+            default_viewport=viewport,
+        )
+        context, page = await manager.new_page(user_id, headless=headless)
+        try:
+            await page.set_viewport_size(viewport)
+        except Exception:
+            pass
         _attach_telemetry(page, publisher, session_id)
 
         streamer = Screencaster(page, publisher, session_id, viewport["width"], viewport["height"], quality)
         await streamer.start()
+        # Let the user click/type/scroll into the live view ("Take Control").
+        input_ctl = InputController(page, publisher.client, session_id)
+        await input_ctl.start()
+
+        # Holder shared with the step loop so it can swap to a recovered page after
+        # a crash without unwinding the run (stream + input rebind to the new page).
+        live = _LiveSession(manager, user_id, headless, publisher, session_id)
+        live.page = page
+        live.streamer = streamer
+        live.input_ctl = input_ctl
+
+        # When a page element triggers a file-chooser dialog, store the Playwright
+        # FileChooser on the controller and notify the dashboard so it can open the
+        # native OS picker and send the file back via browser:input {type:"file_upload"}.
+        def _on_filechooser(chooser):
+            input_ctl.pending_file_chooser = chooser
+            _fire(publisher.publish(session_id, "browser:filechooser", {
+                "sessionId": session_id, "timestamp": now_ms(),
+            }))
+        page.on("filechooser", _on_filechooser)
+
+        # Browser health: a renderer crash (OOM / GPU) freezes the live view. Flip
+        # state to ERROR immediately so the dashboard reflects it. If the crash
+        # happens DURING a step, the in-flight await raises and _run_steps drives
+        # recovery (relaunch in the same logged-in context + retry). If it happens
+        # while idle (e.g. the user is driving), recover here so the view returns.
+        def _on_crash(*_):
+            _fire(publisher.publish(session_id, "worker:browser_state", {"state": "ERROR"}))
+            if live is not None:
+                _fire(_recover_if_idle(live))
+        page.on("crash", _on_crash)
+
         await publisher.publish(session_id, "browser:initialized", {"sessionId": session_id})
         # Chromium is up and the observer stream is attached, but no automation
         # has run yet → READY (not RUNNING).
@@ -266,7 +392,9 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
             status = outcome.get("status", "success")
             healed = 0
         else:
-            results, healed = await _run_steps(page, steps, publisher, session_id)
+            results, healed = await _run_steps(page, steps, publisher, session_id, live)
+            # A crash mid-run swaps in a recovered page — use it for the rest.
+            page = live.page
             total = len(steps)
             all_passed = bool(results) and all(r["success"] for r in results) and len(results) == len(steps)
             status = "success" if all_passed else "partial"
@@ -293,21 +421,39 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
         })
         await publisher.publish(session_id, "worker:browser_state", {"state": "ERROR"})
     finally:
+        if input_ctl is not None:
+            await input_ctl.stop()
         if streamer is not None:
             await streamer.stop()
-        if browser is not None:
+        # Close only the PAGE — the per-user persistent context stays warm in the
+        # BrowserManager so the next run reuses the logged-in session (and the
+        # profile persists on disk regardless). Contexts close on engine shutdown.
+        # After a crash recovery the live page is live.page, so prefer that.
+        final_page = live.page if live is not None and live.page is not None else page
+        if final_page is not None:
             try:
-                await browser.close()
+                await final_page.close()
             except Exception:
                 pass
 
 
-async def _run_steps(page, steps, publisher, session_id):
-    """Execute a Node-generated step plan (the original engine path)."""
+async def _run_steps(page, steps, publisher, session_id, live=None):
+    """Execute a Node-generated step plan (the original engine path).
+
+    If a step fails because the page/browser CRASHED (not a normal automation
+    error), and a `live` session is available, we relaunch a fresh page in the
+    SAME persistent context (session intact), rebind the stream + input, and RETRY
+    the same step — so a renderer crash mid-run self-heals instead of aborting.
+    """
     results: list[dict] = []
     healed = 0
 
-    for step in steps:
+    i = 0
+    while i < len(steps):
+        step = steps[i]
+        # Always act on the current live page (may have been swapped by recovery).
+        if live is not None and live.page is not None:
+            page = live.page
         idx = step.get("index")
         start = now_ms()
 
@@ -350,8 +496,20 @@ async def _run_steps(page, steps, publisher, session_id):
                 await _handle_wait_condition(page, step["waitCondition"])
 
         except Exception as err:  # noqa: BLE001 — mirror worker self-healing
+            # Crash recovery FIRST: if the page/browser died, relaunch in the same
+            # logged-in context and retry this same step (don't advance `i`).
+            if live is not None and _is_crash_error(err):
+                if await live.recover():
+                    page = live.page
+                    await publisher.publish(session_id, "step:retrying", {
+                        "sessionId": session_id, "stepIndex": idx,
+                        "reason": "browser recovered after crash",
+                    })
+                    continue  # retry same step on the recovered page
+
             if await _attempt_healing(page, step, idx, start, err, publisher, session_id, results):
                 healed += 1
+                i += 1
                 continue
 
             shot = await _safe_screenshot(page)
@@ -361,6 +519,8 @@ async def _run_steps(page, steps, publisher, session_id):
                 "sessionId": session_id, "stepIndex": idx, "error": str(err), "screenshot": shot,
             })
             break
+
+        i += 1
 
     return results, healed
 
