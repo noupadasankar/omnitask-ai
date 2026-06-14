@@ -513,6 +513,7 @@ function DashboardPage() {
             <div className="task-input-glow max-w-4xl mx-auto">
               <div className="rounded-3xl border border-white/[0.08] bg-black/40 backdrop-blur-xl overflow-hidden">
                 <div className="p-5">
+                  
                   <textarea
                     ref={inputRef}
                     value={task}
@@ -526,6 +527,7 @@ function DashboardPage() {
                     
                     rows={3}
                     disabled={launching}
+                    placeholder="Ask the agent to do anything..."
                     className="w-full resize-none bg-transparent text-[15px] text-white placeholder:text-zinc-600 focus:outline-none leading-relaxed disabled:opacity-50"
                   />
                 </div>

@@ -166,7 +166,12 @@ class LLMClient:
         """
         if not job_title:
             return False
-            
+
+        # No role filter configured → apply broadly (don't silently zero matches).
+        if not preferred_roles:
+            log.debug("No preferred roles set — treating as a role match")
+            return True
+
         job_title_lower = job_title.lower()
         
         # Debug: log what we're matching

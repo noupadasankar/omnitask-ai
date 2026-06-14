@@ -82,7 +82,6 @@ class _PortalBridge:
         status = record.get("status")
         payload = {"sessionId": self.session_id, "userId": self.user_id, **record}
         await self.publisher.publish(self.session_id, "application:result", payload)
-
         # PENDING_APPROVAL is a transient UI signal — keep only terminal states
         # in the summary the skill returns.
         if status != "PENDING_APPROVAL":
@@ -98,6 +97,19 @@ class _PortalBridge:
                 source="JobAgent",
                 level=level,
             )
+
+    async def emit_queue(self, portal: str, counts: dict) -> None:
+        """Stream live job-queue counts (pending/processing/.../failed) to the UI."""
+        await self.publisher.publish(
+            self.session_id,
+            "queue:state",
+            {
+                "sessionId": self.session_id,
+                "userId": self.user_id,
+                "portal": portal,
+                "counts": counts,
+            },
+        )
 
     async def gate(self, job: dict, match_result: dict) -> bool:
         """Request approval for a submit and block until the user responds.
@@ -141,10 +153,14 @@ class JobApplicationSkill(Skill):
             return self.ok([], status="partial")
 
         override = (ctx.job.get("config") or {}).get("preferences") or {}
+        # Submit behavior is chosen per-launch in the dashboard wizard and arrives
+        # in `override`; the env vars are only a fallback for non-wizard runs.
         dry_run = _env_bool("JOB_AGENT_DRY_RUN", True)
         if isinstance(override.get("dryRun"), bool):
             dry_run = override["dryRun"]
         auto_approve = _env_bool("JOB_AGENT_AUTO_APPROVE", False)
+        if isinstance(override.get("autoApprove"), bool):
+            auto_approve = override["autoApprove"]
 
         bridge = _PortalBridge(
             ctx,

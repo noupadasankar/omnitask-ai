@@ -41,6 +41,8 @@ export interface LaunchJobAgentInput {
   minScore?: number;
   maxApplications?: number;
   dryRun?: boolean;
+  /** Live mode only: true → submit every job without approval; false → approve each. */
+  autoApprove?: boolean;
   userProfile?: { name: string; email: string; phone: string };
   credentials?: Record<string, { email: string; password: string }>;
 }
@@ -138,6 +140,7 @@ export class JobAgentService {
       minScore,
       maxApplications,
       ...(input.dryRun !== undefined ? { dryRun: input.dryRun } : {}),
+      ...(input.autoApprove !== undefined ? { autoApprove: input.autoApprove } : {}),
       ...(input.userProfile ? { userProfile: input.userProfile } : {}),
       ...(input.credentials ? { credentials: input.credentials } : {}),
     };
@@ -160,7 +163,7 @@ export class JobAgentService {
     });
 
     this.logger.log(
-      `[JobAgent] launched session=${session.id} task=${task.id} portals=${portals.join(',')} max=${maxApplications} dryRun=${input.dryRun ?? 'env'}`,
+      `[JobAgent] launched session=${session.id} task=${task.id} portals=${portals.join(',')} max=${maxApplications} dryRun=${input.dryRun ?? 'env'} autoApprove=${input.autoApprove ?? 'env'}`,
     );
 
     return { sessionId: session.id, taskId: task.id, dispatched: alive };

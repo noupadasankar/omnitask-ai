@@ -853,6 +853,11 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
         return JobApplicationStatus.PENDING_APPROVAL;
       case 'MATCHED':
         return JobApplicationStatus.MATCHED;
+      case 'QUEUED':
+      case 'PENDING':
+        return JobApplicationStatus.QUEUED;
+      case 'PROCESSING':
+        return JobApplicationStatus.PROCESSING;
       case 'SKIPPED':
       default:
         return JobApplicationStatus.SKIPPED;

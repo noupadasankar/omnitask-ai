@@ -137,7 +137,13 @@ export function JobWizardModal({ open, taskText, onClose, onLaunched }: Props) {
   const [locations, setLocations] = useState<string[]>(parsed.locations);
   const [locationInput, setLocationInput] = useState('');
   const [maxApplications, setMaxApplications] = useState(10);
-  const [dryRun, setDryRun] = useState(true);
+  // Default to LIVE + fully autonomous submit (user-chosen behavior): fill and
+  // submit every matching job. Toggle Dry Run / "approve each" below to change.
+  const [dryRun, setDryRun] = useState(false);
+  // Only meaningful when live (dryRun=false): true → submit every job
+  // automatically, false → pause for approval before each submit. Chosen here,
+  // per launch — never read from .env.
+  const [autoApprove, setAutoApprove] = useState(true);
 
   // Step 6 — Launch
   const [launching, setLaunching] = useState(false);
@@ -161,6 +167,8 @@ export function JobWizardModal({ open, taskText, onClose, onLaunched }: Props) {
     setResumeFile(null);
     setUploadError(null);
     setLaunchError(null);
+    setDryRun(false);       // fresh launch defaults to live…
+    setAutoApprove(true);   // …and fully autonomous submit
   }, [open, taskText]);
 
   /* ─── Resume ──────────────────────────────────────────────────────── */
@@ -237,6 +245,8 @@ export function JobWizardModal({ open, taskText, onClose, onLaunched }: Props) {
         locations,
         maxApplications,
         dryRun,
+        // Autonomous only applies when live; dry-run never submits anyway.
+        autoApprove: dryRun ? false : autoApprove,
         userProfile: profile,
         credentials,
       });
@@ -340,12 +350,13 @@ export function JobWizardModal({ open, taskText, onClose, onLaunched }: Props) {
                     <StepPreferences
                       roles={roles} roleInput={roleInput}
                       locations={locations} locationInput={locationInput}
-                      maxApplications={maxApplications} dryRun={dryRun}
+                      maxApplications={maxApplications} dryRun={dryRun} autoApprove={autoApprove}
                       onRoleInputChange={setRoleInput} onAddRole={addRole}
                       onRemoveRole={(r) => setRoles((p) => p.filter((x) => x !== r))}
                       onLocationInputChange={setLocationInput} onAddLocation={addLocation}
                       onRemoveLocation={(l) => setLocations((p) => p.filter((x) => x !== l))}
                       onMaxChange={setMaxApplications} onDryRunChange={setDryRun}
+                      onAutoApproveChange={setAutoApprove}
                     />
                   )}
                   {step === 6 && (
@@ -355,7 +366,7 @@ export function JobWizardModal({ open, taskText, onClose, onLaunched }: Props) {
                       portals={selectedPortals}
                       credentials={credentials}
                       roles={roles} locations={locations}
-                      maxApplications={maxApplications} dryRun={dryRun}
+                      maxApplications={maxApplications} dryRun={dryRun} autoApprove={autoApprove}
                       launching={launching} error={launchError}
                       onLaunch={handleLaunch}
                     />
@@ -695,15 +706,16 @@ function StepCredentials({
 /* ─── Step 5: Preferences ────────────────────────────────────────────────────── */
 
 function StepPreferences({
-  roles, roleInput, locations, locationInput, maxApplications, dryRun,
+  roles, roleInput, locations, locationInput, maxApplications, dryRun, autoApprove,
   onRoleInputChange, onAddRole, onRemoveRole, onLocationInputChange, onAddLocation, onRemoveLocation,
-  onMaxChange, onDryRunChange,
+  onMaxChange, onDryRunChange, onAutoApproveChange,
 }: {
   roles: string[]; roleInput: string; locations: string[]; locationInput: string;
-  maxApplications: number; dryRun: boolean;
+  maxApplications: number; dryRun: boolean; autoApprove: boolean;
   onRoleInputChange: (v: string) => void; onAddRole: () => void; onRemoveRole: (r: string) => void;
   onLocationInputChange: (v: string) => void; onAddLocation: () => void; onRemoveLocation: (l: string) => void;
   onMaxChange: (n: number) => void; onDryRunChange: (v: boolean) => void;
+  onAutoApproveChange: (v: boolean) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -787,19 +799,73 @@ function StepPreferences({
           <p className="text-xs text-zinc-500 mt-0.5">Full apply flow without final submit.</p>
         </div>
       </label>
+
+      {/* Live-mode submit choice — only relevant when NOT a dry run */}
+      {!dryRun && (
+        <div className="space-y-2 rounded-xl border border-red-500/20 bg-red-500/[0.03] p-3">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-red-300">
+            <AlertTriangle className="h-3.5 w-3.5" /> Live mode — how should it submit?
+          </p>
+          <SubmitModeOption
+            active={!autoApprove}
+            onClick={() => onAutoApproveChange(false)}
+            title="Approve each job"
+            desc="Pause for your approval in the dashboard before every real submit."
+          />
+          <SubmitModeOption
+            active={autoApprove}
+            onClick={() => onAutoApproveChange(true)}
+            title="Fully autonomous"
+            desc="Submit every matching job automatically — no approval click."
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+function SubmitModeOption({
+  active, onClick, title, desc,
+}: {
+  active: boolean; onClick: () => void; title: string; desc: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-all',
+        active ? 'border-red-500/60 bg-red-500/[0.06]' : 'border-white/[0.07] hover:bg-white/[0.02]',
+      )}
+    >
+      <div className={cn(
+        'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-all',
+        active ? 'border-red-500' : 'border-white/20',
+      )}>
+        {active && <div className="h-2 w-2 rounded-full bg-red-500" />}
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-white">{title}</p>
+        <p className="mt-0.5 text-xs text-zinc-500">{desc}</p>
+      </div>
+    </button>
   );
 }
 
 /* ─── Step 6: Review & Launch ────────────────────────────────────────────────── */
 
 function StepReview({
-  profile, resumeName, portals, credentials, roles, locations, maxApplications, dryRun, launching, error, onLaunch,
+  profile, resumeName, portals, credentials, roles, locations, maxApplications, dryRun, autoApprove, launching, error, onLaunch,
 }: {
   profile: UserProfile; resumeName?: string; portals: string[]; credentials: Record<string, PortalCredential>;
-  roles: string[]; locations: string[]; maxApplications: number; dryRun: boolean;
+  roles: string[]; locations: string[]; maxApplications: number; dryRun: boolean; autoApprove: boolean;
   launching: boolean; error: string | null; onLaunch: () => void;
 }) {
+  const modeLabel = dryRun
+    ? 'Dry Run'
+    : autoApprove
+      ? '⚠ Live — autonomous (submit all)'
+      : '⚠ Live — approve each job';
   const portalDefs = PORTALS.filter((p) => portals.includes(p.id));
 
   return (
@@ -839,7 +905,7 @@ function StepReview({
         <ReviewRow label="Max" value={`${maxApplications} jobs`} icon={<SlidersHorizontal className="h-3.5 w-3.5 text-purple-400" />} />
         <ReviewRow
           label="Mode"
-          value={dryRun ? 'Dry Run' : '⚠ Live — real applications'}
+          value={modeLabel}
           icon={<CheckCircle2 className={cn('h-3.5 w-3.5', dryRun ? 'text-amber-400' : 'text-red-400')} />}
         />
       </div>

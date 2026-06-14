@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+
 export default function Loading() {
   const [progress, setProgress] = useState(0);
 

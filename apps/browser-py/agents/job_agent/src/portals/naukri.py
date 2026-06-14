@@ -357,12 +357,14 @@ class NaukriPortal(BasePortal):
                     break
             
             self.logger.debug(f"Found {len(job_cards)} cards on page")
-            
-            if card_index >= len(job_cards):
-                self.logger.warning(f"Card index {card_index} out of range (have {len(job_cards)} cards)")
+
+            # Re-locate by title (stable) rather than positional index.
+            card = await self._relocate_card(job_cards, job)
+            if card is None:
+                self.logger.warning(
+                    f"Could not re-locate card for '{job.get('role')}' (have {len(job_cards)} cards)"
+                )
                 return False
-            
-            card = job_cards[card_index]
             
             # Find checkbox on LEFT side of job card
             checkbox = None
@@ -471,7 +473,30 @@ class NaukriPortal(BasePortal):
             # Wait for redirect to confirmation page
             self.logger.info("⏳ Waiting for confirmation page...")
             await asyncio.sleep(5)
-            
+
+            # Many Naukri jobs open a follow-up questionnaire (the "chatbot"
+            # drawer or a modal) that must be answered before the application is
+            # recorded. Auto-answer it with the shared form-filler.
+            await self._complete_followup_modal(
+                page,
+                container_selectors=[
+                    '.chatbot_DrawerContentWrapper', 'div[class*="chatbot"]',
+                    '.chatbot_Drawer', '.drawer', '[role="dialog"]',
+                    '.apply-message-modal', 'div[class*="Drawer"]',
+                ],
+                advance_selectors=[
+                    'button:has-text("Save")', 'button:has-text("Submit")',
+                    'button:has-text("Continue")', 'button:has-text("Apply")',
+                    '.sendMsg', '[class*="sendMsg"]', 'div[class*="send"]',
+                ],
+                success_selectors=[
+                    'text=successfully applied', 'text=Successfully Applied',
+                    'text=Application sent', 'text=You have successfully applied',
+                ],
+                max_rounds=8,
+                job=job,
+            )
+
             # Check for confirmation message
             confirmation_found = False
             confirmation_selectors = [
@@ -497,8 +522,10 @@ class NaukriPortal(BasePortal):
             self.logger.info("Navigating back to recommended jobs page...")
             await self.browser.goto("https://www.naukri.com/mnjuser/recommendedjobs")
             await asyncio.sleep(2)
-            
-            return confirmation_found or True  # Assume success if button was clicked
+
+            # Honest result: only count as applied when a confirmation marker was
+            # seen (so a silent failure is retried/marked FAILED, not faked).
+            return confirmation_found
             
         except Exception as e:
             self.logger.error(f"Error applying to Naukri job: {e}", exc_info=True)

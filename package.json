@@ -5,6 +5,10 @@
   "packageManager": "pnpm@8.6.0",
   "scripts": {
     "dev": "turbo dev",
+    "stack": "node scripts/dev.mjs",
+    "setup": "pnpm install && pip install -r apps/browser-py/requirements.txt && python -m playwright install chromium && pnpm db:push",
+    "infra": "docker compose up -d postgres redis",
+    "infra:down": "docker compose stop postgres redis",
     "dev:backend": "pnpm --filter backend start:dev",
     "dev:frontend": "pnpm --filter ./apps/frontend dev",
     "dev:worker": "pnpm --filter worker dev",

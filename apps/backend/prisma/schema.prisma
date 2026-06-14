@@ -560,6 +560,8 @@ model JobApplication {
 
 enum JobApplicationStatus {
   MATCHED
+  QUEUED
+  PROCESSING
   SKIPPED
   PENDING_APPROVAL
   APPLIED

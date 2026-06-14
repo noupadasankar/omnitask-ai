@@ -59,6 +59,8 @@ export interface LaunchJobAgentInput {
   minScore?: number;
   maxApplications?: number;
   dryRun?: boolean;
+  /** Live mode only: true → submit every job without approval; false → approve each. */
+  autoApprove?: boolean;
   userProfile?: { name: string; email: string; phone: string };
   credentials?: Record<string, { email: string; password: string }>;
 }

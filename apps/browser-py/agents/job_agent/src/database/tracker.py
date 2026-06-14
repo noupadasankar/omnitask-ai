@@ -83,7 +83,20 @@ class DatabaseTracker:
                 details TEXT
             )
         ''')
-        
+
+        # Screening answers table — records what the auto-filler answered per job
+        # (the "answers" table from the target architecture: question/answer/job).
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS answers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_url TEXT,
+                portal TEXT,
+                question TEXT,
+                answer TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         self.conn.commit()
     
     def add_application(self, 
@@ -118,6 +131,17 @@ class DatabaseTracker:
             print(f"Error adding application: {e}")
             return False
     
+    def add_answer(self, job_url: str, portal: str, question: str, answer: str) -> None:
+        """Record a screening question/answer the auto-filler supplied for a job."""
+        try:
+            self.cursor.execute(
+                'INSERT INTO answers (job_url, portal, question, answer) VALUES (?, ?, ?, ?)',
+                (job_url, portal, (question or '')[:500], (answer or '')[:1000]),
+            )
+            self.conn.commit()
+        except Exception as e:
+            print(f"Error adding answer: {e}")
+
     def is_already_applied(self, job_url: str) -> bool:
         """Check if we've already applied to this job."""
         self.cursor.execute(

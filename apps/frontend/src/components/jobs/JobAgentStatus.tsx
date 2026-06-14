@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Bot, Building2, CheckCircle2, SkipForward, Activity } from 'lucide-react';
+import { Bot, Building2, CheckCircle2, SkipForward, Activity, ListChecks, Loader2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { LiveApplication, JobAgentPhase } from '@/hooks/useJobAgentSession';
+import type { LiveApplication, JobAgentPhase, QueueState } from '@/hooks/useJobAgentSession';
 
 interface JobAgentStatusProps {
   phase: JobAgentPhase;
   applications: LiveApplication[];
+  /** Live job-queue counts emitted by the worker (PENDING/PROCESSING/…). */
+  queueState?: QueueState | null;
   /** Target from the launch form — the denominator for "43 / 100". */
   target: number;
 }
@@ -22,7 +24,7 @@ interface JobAgentStatusProps {
  *   • Skipped     = rows SKIPPED (low score / approval denied)
  *   • Progress    = applied / target
  */
-export function JobAgentStatus({ phase, applications, target }: JobAgentStatusProps) {
+export function JobAgentStatus({ phase, applications, queueState, target }: JobAgentStatusProps) {
   const stats = useMemo(() => {
     const applied = applications.filter((a) => a.status === 'APPLIED').length;
     const skipped = applications.filter((a) => a.status === 'SKIPPED').length;
@@ -106,6 +108,23 @@ export function JobAgentStatus({ phase, applications, target }: JobAgentStatusPr
         <Counter icon={Building2} label="Failed" value={stats.failed} tone="red" />
       </div>
 
+      {/* Live job queue (from the worker state machine) */}
+      {queueState && (
+        <div className="mb-4 rounded-xl border border-white/5 bg-black/30 p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-zinc-600">
+            <ListChecks className="h-3 w-3" /> Job Queue
+            <span className="ml-auto text-zinc-500">{queueState.total} total</span>
+          </div>
+          <div className="grid grid-cols-5 gap-1.5 text-center">
+            <QueuePill icon={Clock} label="Pending" value={queueState.PENDING} tone="zinc" />
+            <QueuePill icon={Loader2} label="Active" value={queueState.PROCESSING} tone="amber" spin />
+            <QueuePill icon={CheckCircle2} label="Done" value={queueState.COMPLETED} tone="emerald" />
+            <QueuePill icon={SkipForward} label="Skip" value={queueState.SKIPPED} tone="zinc" />
+            <QueuePill icon={Building2} label="Fail" value={queueState.FAILED} tone="red" />
+          </div>
+        </div>
+      )}
+
       {/* Current job */}
       <div className="rounded-xl border border-white/5 bg-black/30 p-3">
         <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600">
@@ -132,6 +151,36 @@ export function JobAgentStatus({ phase, applications, target }: JobAgentStatusPr
           <div className="mt-1 text-sm text-zinc-600">No active job</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function QueuePill({
+  icon: Icon,
+  label,
+  value,
+  tone,
+  spin,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: number;
+  tone: 'emerald' | 'zinc' | 'red' | 'amber';
+  spin?: boolean;
+}) {
+  const toneCls =
+    tone === 'emerald'
+      ? 'text-emerald-400'
+      : tone === 'red'
+        ? 'text-red-400'
+        : tone === 'amber'
+          ? 'text-amber-400'
+          : 'text-zinc-400';
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/30 p-1.5">
+      <Icon className={cn('mx-auto mb-0.5 h-3 w-3', toneCls, spin && value > 0 && 'animate-spin')} />
+      <div className={cn('text-sm font-bold leading-none', toneCls)}>{value}</div>
+      <div className="mt-0.5 text-[8px] uppercase tracking-wider text-zinc-600">{label}</div>
     </div>
   );
 }

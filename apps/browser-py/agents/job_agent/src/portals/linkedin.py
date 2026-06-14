@@ -39,7 +39,9 @@ class LinkedInPortal(BasePortal):
             
             for selector in profile_selectors:
                 try:
-                    elem = await page.query_selector(selector, timeout=2000)
+                    # NOTE: query_selector takes NO timeout kwarg — passing one
+                    # raises TypeError and silently breaks this whole fallback.
+                    elem = await page.query_selector(selector)
                     if elem:
                         self.logger.debug(f"✓ Found login indicator: {selector}")
                         return True
@@ -262,14 +264,17 @@ class LinkedInPortal(BasePortal):
                 job_cards = await page.query_selector_all(selector)
                 if job_cards and len(job_cards) > 0:
                     break
-            
+
             self.logger.debug(f"Found {len(job_cards)} cards on page")
-            
-            if card_index >= len(job_cards):
-                self.logger.warning(f"Card index {card_index} out of range (have {len(job_cards)} cards)")
+
+            # Re-locate THIS job's card by title (stable across reorders) — never
+            # trust the raw index, which drifts as applied jobs leave the list.
+            card = await self._relocate_card(job_cards, job)
+            if card is None:
+                self.logger.warning(
+                    f"Could not re-locate card for '{job.get('role')}' (have {len(job_cards)} cards)"
+                )
                 return False
-            
-            card = job_cards[card_index]
             
             # Click job card to view details on right side
             self.logger.info("Clicking job card to view details...")
@@ -340,202 +345,203 @@ class LinkedInPortal(BasePortal):
                 self.logger.warning("Easy Apply modal did not appear")
                 return False
             
-            # MULTI-STEP FORM: Keep clicking Next until Review button appears
-            max_steps = 10  # Safety limit
+            # ── Multi-step form: fill every step, then advance, until we can
+            #    submit. LinkedIn blocks Next/Submit while required fields are
+            #    empty, so we auto-answer each step and detect a stuck step
+            #    instead of clicking a dead button forever.
+            max_steps = 15  # generous: long forms can have many pages
+            submitted = False
+
             for step in range(max_steps):
-                self.logger.info(f"📝 Step {step + 1}: Processing form...")
-                
-                await asyncio.sleep(2)
-                
-                # Scroll to bottom of modal to find Next/Review button
+                self.logger.info(f"📝 Step {step + 1}: filling form...")
+                await asyncio.sleep(1.5)
+
+                # Best-guess answers for every visible field on this step.
+                await self._autofill_form(modal, job=job)
+
+                # Scroll the modal so the footer action button is in view.
                 try:
                     await modal.evaluate('el => el.scrollTo(0, el.scrollHeight)')
-                    await asyncio.sleep(1)
-                except:
+                    await asyncio.sleep(0.8)
+                except Exception:
                     pass
-                
-                # Check for Review button (last step before submit)
-                review_button = None
-                review_selectors = [
-                    'button:has-text("Review")',
-                    'button[aria-label*="Review"]',
-                    '.jobs-easy-apply-modal button:has-text("Review")',
-                ]
-                
-                for selector in review_selectors:
+
+                # Submit takes priority — if it's here, we're done filling.
+                submit_button = await self._find_button(
+                    modal,
+                    ['button[aria-label*="Submit application"]',
+                     'button:has-text("Submit application")',
+                     'button:has-text("Submit")'],
+                )
+                if submit_button:
+                    await self._handle_follow_checkbox(modal)
+                    self.logger.info(f"🚀 Submitting application for: {job['role']}")
                     try:
-                        review_button = await modal.query_selector(selector)
-                        if review_button:
-                            is_visible = await review_button.is_visible()
-                            if is_visible:
-                                self.logger.info("✅ Found Review button - clicking...")
-                                await review_button.click()
-                                await asyncio.sleep(3)
-                                break
-                    except:
-                        continue
-                
+                        await submit_button.click(timeout=10000)
+                        await asyncio.sleep(3)
+                        submitted = True
+                    except Exception as e:
+                        self.logger.error(f"Failed to click Submit: {e}")
+                    break
+
+                # Review → click and loop again (Submit usually appears next).
+                review_button = await self._find_button(
+                    modal,
+                    ['button[aria-label*="Review"]',
+                     'button:has-text("Review")'],
+                )
                 if review_button:
-                    # Review button clicked - now on final submit page
-                    break
-                
-                # Look for Next button
-                next_button = None
-                next_selectors = [
-                    'button:has-text("Next")',
-                    'button[aria-label*="Continue to next step"]',
-                    '.jobs-easy-apply-modal button:has-text("Next")',
-                    'button[aria-label*="Next"]',
-                ]
-                
-                for selector in next_selectors:
+                    self.logger.info("✅ Review button — clicking...")
                     try:
-                        next_button = await modal.query_selector(selector)
-                        if next_button:
-                            is_visible = await next_button.is_visible()
-                            is_enabled = await next_button.is_enabled()
-                            if is_visible and is_enabled:
-                                button_text = await next_button.inner_text()
-                                self.logger.info(f"✅ Found Next button: '{button_text}' - clicking...")
-                                await next_button.click()
-                                await asyncio.sleep(2)
-                                break
-                    except:
-                        continue
-                
-                if not next_button and not review_button:
-                    # No Next or Review button found - might already be on submit page
-                    self.logger.info("No Next/Review button found - checking for Submit...")
+                        await review_button.click(timeout=10000)
+                        await asyncio.sleep(2)
+                    except Exception:
+                        pass
+                    continue
+
+                # Otherwise advance with Next, and confirm we actually moved on.
+                next_button = await self._find_button(
+                    modal,
+                    ['button[aria-label*="Continue to next step"]',
+                     'button:has-text("Next")',
+                     'button[aria-label*="Next"]'],
+                )
+                if not next_button:
+                    self.logger.info("No Next/Review/Submit button — assuming end of form.")
                     break
-            
-            # Now on final page - scroll to bottom
-            self.logger.info("📄 On final submit page - scrolling to bottom...")
-            try:
-                await modal.evaluate('el => el.scrollTo(0, el.scrollHeight)')
-                await asyncio.sleep(2)
-            except:
-                pass
-            
-            # IMPORTANT: Uncheck "Follow company" checkbox
-            follow_checkbox = None
-            follow_selectors = [
-                'input[type="checkbox"]',
-                'label:has-text("Follow")',
-                '[aria-label*="Follow"]',
-            ]
-            
-            self.logger.debug("Looking for 'Follow company' checkbox...")
-            for selector in follow_selectors:
+
+                sig_before = await self._modal_signature(modal)
                 try:
-                    follow_checkbox = await modal.query_selector(selector)
-                    if follow_checkbox:
-                        # Check if it's checked
-                        is_checked = await follow_checkbox.is_checked()
-                        if is_checked:
-                            self.logger.info("✅ Found Follow checkbox - unchecking...")
-                            await follow_checkbox.click()
-                            await asyncio.sleep(1)
-                            break
+                    await next_button.click(timeout=10000)
+                    await asyncio.sleep(1.8)
                 except Exception as e:
-                    self.logger.debug(f"Error with checkbox {selector}: {e}")
-                    continue
-            
-            # Find and click "Submit application" button
-            submit_button = None
-            submit_selectors = [
-                'button:has-text("Submit application")',
-                'button[aria-label*="Submit application"]',
-                '.jobs-easy-apply-modal button:has-text("Submit")',
-                'button:has-text("Submit")',
-            ]
-            
-            self.logger.debug("Looking for Submit application button...")
-            for selector in submit_selectors:
-                try:
-                    submit_button = await modal.query_selector(selector)
-                    if submit_button:
-                        is_visible = await submit_button.is_visible()
-                        is_enabled = await submit_button.is_enabled()
-                        if is_visible and is_enabled:
-                            button_text = await submit_button.inner_text()
-                            self.logger.info(f"✅ Found Submit button: '{button_text}'")
-                            break
-                except:
-                    continue
-            
-            if not submit_button:
-                self.logger.warning(f"Submit application button not found for {job['role']}")
-                # Try to close modal
-                try:
-                    close_btn = await modal.query_selector('button[aria-label="Dismiss"]')
-                    if close_btn:
-                        await close_btn.click()
-                except:
-                    pass
+                    self.logger.warning(f"Next click failed: {e}")
+
+                if await self._modal_signature(modal) == sig_before:
+                    # Validation blocked us. Re-fill (we may have missed a field)
+                    # and try once more; if still stuck, give up on this job.
+                    self.logger.info("Step did not advance — re-filling and retrying...")
+                    await self._autofill_form(modal, job=job)
+                    try:
+                        await next_button.click(timeout=8000)
+                        await asyncio.sleep(1.8)
+                    except Exception:
+                        pass
+                    if await self._modal_signature(modal) == sig_before:
+                        self.logger.warning(
+                            f"Stuck on a required field for {job['role']} — skipping job."
+                        )
+                        await self._dismiss_modal(page)
+                        return False
+
+            if not submitted:
+                self.logger.warning(
+                    f"Reached end of Easy Apply flow without submitting for {job['role']}"
+                )
+                await self._dismiss_modal(page)
                 return False
-            
-            # Click Submit button
-            self.logger.info(f"🚀 Submitting application for: {job['role']}")
-            try:
-                await submit_button.click(timeout=10000)
-                await asyncio.sleep(4)
-            except Exception as e:
-                self.logger.error(f"Failed to click Submit button: {e}")
-                return False
-            
-            # Wait for acknowledgment popup
-            self.logger.info("⏳ Waiting for confirmation...")
+
+            # ── Confirm + dismiss the acknowledgement popup ─────────────────
             confirmation_found = False
-            confirmation_selectors = [
-                'text=Your application was sent',
-                'text=Application sent',
-                'text=successfully',
-            ]
-            
-            for selector in confirmation_selectors:
+            for selector in ('text=Your application was sent',
+                             'text=Application sent',
+                             'text=successfully submitted'):
                 try:
-                    elem = await page.query_selector(selector, timeout=5000)
-                    if elem:
-                        self.logger.info(f"✅ Application confirmed: {selector}")
-                        confirmation_found = True
-                        break
-                except:
+                    await page.wait_for_selector(selector, timeout=4000)
+                    self.logger.info(f"✅ Application confirmed: {selector}")
+                    confirmation_found = True
+                    break
+                except Exception:
                     continue
-            
-            # Click Done button in acknowledgment popup
-            done_button = None
-            done_selectors = [
-                'button:has-text("Done")',
-                'button[aria-label*="Dismiss"]',
-                'button:has-text("Dismiss")',
-            ]
-            
-            for selector in done_selectors:
+
+            done_button = await self._find_button(
+                page,
+                ['button:has-text("Done")',
+                 'button[aria-label="Dismiss"]',
+                 'button:has-text("Dismiss")'],
+            )
+            if done_button:
                 try:
-                    done_button = await page.query_selector(selector)
-                    if done_button:
-                        is_visible = await done_button.is_visible()
-                        if is_visible:
-                            self.logger.info("✅ Clicking Done button...")
-                            await done_button.click()
-                            await asyncio.sleep(2)
-                            break
-                except:
-                    continue
-            
-            return confirmation_found or True  # Assume success if submit was clicked
-            
+                    await done_button.click(timeout=8000)
+                    await asyncio.sleep(1.5)
+                except Exception:
+                    pass
+
+            if confirmation_found:
+                self.logger.info(f"🎉 Applied to {job['role']} at {job.get('company','')}")
+            else:
+                self.logger.info(
+                    "Submit clicked but no explicit confirmation text seen — treating as applied."
+                )
+            return True
+
         except Exception as e:
             self.logger.error(f"Error applying to LinkedIn job: {e}", exc_info=True)
-            # Try to close any open modals
-            try:
-                close_btn = await page.query_selector('button[aria-label="Dismiss"]')
-                if close_btn:
-                    await close_btn.click()
-                    await asyncio.sleep(1)
-            except:
-                pass
+            await self._dismiss_modal(page)
             return False
+
+    # ── LinkedIn-specific Easy Apply helpers ─────────────────────────────────
+    # The generic form auto-fill (_autofill_form / _fill_select / _find_button /
+    # _label_for / answer helpers / _complete_followup_modal) now lives in
+    # BasePortal and is shared with Naukri + Instahyre. Only the bits below are
+    # specific to LinkedIn's Easy Apply modal.
+
+    async def _dismiss_modal(self, page):
+        """Best-effort close of an open Easy Apply modal (and 'discard' prompt)."""
+        try:
+            close_btn = await page.query_selector('button[aria-label="Dismiss"]')
+            if close_btn and await close_btn.is_visible():
+                await close_btn.click()
+                await asyncio.sleep(1)
+                # LinkedIn asks to confirm discarding the draft.
+                discard = await page.query_selector(
+                    'button[data-control-name="discard_application_confirm_btn"], '
+                    'button:has-text("Discard")'
+                )
+                if discard and await discard.is_visible():
+                    await discard.click()
+                    await asyncio.sleep(0.5)
+        except Exception:
+            pass
+
+    async def _modal_signature(self, modal):
+        """A cheap fingerprint of the current form step.
+
+        Used to detect whether clicking Next actually advanced the form: LinkedIn
+        keeps you on the same step (and shows an inline error) when a required
+        field is still invalid.
+        """
+        try:
+            return await modal.evaluate(
+                """el => {
+                    const h = el.querySelector('h3, h2, .t-16, [data-test-form-section]');
+                    const heading = h ? h.innerText.trim() : '';
+                    const fields = el.querySelectorAll('input, select, textarea').length;
+                    const err = el.querySelectorAll('[role="alert"], .artdeco-inline-feedback--error').length;
+                    return heading + '|' + fields + '|' + err;
+                }"""
+            )
+        except Exception:
+            return ''
+
+    async def _handle_follow_checkbox(self, modal):
+        """Uncheck the 'Follow <company>' checkbox before submitting."""
+        try:
+            checks = await modal.query_selector_all('input[type="checkbox"]')
+        except Exception:
+            checks = []
+        for c in checks:
+            try:
+                label = (await self._label_for(c)).lower()
+                if 'follow' in label and await c.is_checked():
+                    self.logger.info("Unchecking 'Follow company'...")
+                    try:
+                        await c.uncheck(timeout=4000)
+                    except Exception:
+                        await c.click(timeout=4000)
+                    return
+            except Exception:
+                continue
 
 
 if __name__ == "__main__":

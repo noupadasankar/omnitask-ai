@@ -394,12 +394,14 @@ class InstahyrePortal(BasePortal):
             await asyncio.sleep(2)  # Let page settle
             job_cards = await page.query_selector_all('div[ng-repeat]')
             self.logger.debug(f"Found {len(job_cards)} cards on page")
-            
-            if card_index >= len(job_cards):
-                self.logger.warning(f"Card index {card_index} out of range (have {len(job_cards)} cards)")
+
+            # Re-locate by title (stable) rather than positional index.
+            card = await self._relocate_card(job_cards, job)
+            if card is None:
+                self.logger.warning(
+                    f"Could not re-locate card for '{job.get('role')}' (have {len(job_cards)} cards)"
+                )
                 return False
-            
-            card = job_cards[card_index]
             
             # Look for "View" button on the card
             view_button = None
@@ -475,9 +477,31 @@ class InstahyrePortal(BasePortal):
             except Exception as e:
                 self.logger.error(f"Failed to click Apply button: {e}")
                 return False
-                
+
             await asyncio.sleep(3)
-            
+
+            # Some Instahyre roles show a follow-up form / questions in the popup
+            # before the application is confirmed. Auto-answer it with the shared
+            # form-filler (no-op when apply is a single click).
+            await self._complete_followup_modal(
+                page,
+                container_selectors=[
+                    '.modal-content', '.modal-dialog', '[role="dialog"]',
+                    'div[class*="modal"]', '.popup', '.ngdialog-content',
+                ],
+                advance_selectors=[
+                    'button:has-text("Apply")', 'button:has-text("Submit")',
+                    'button:has-text("Confirm")', 'button:has-text("Send")',
+                    'button:has-text("Continue")',
+                ],
+                success_selectors=[
+                    'text=Application Submitted', 'text=Successfully Applied',
+                    'text=You have applied',
+                ],
+                max_rounds=4,
+                job=job,
+            )
+
             # Check for confirmation
             success_indicators = [
                 'text=Applied',
@@ -534,8 +558,10 @@ class InstahyrePortal(BasePortal):
                 await asyncio.sleep(1)
             except:
                 pass
-            
-            return applied or True  # Assume success if button was clicked
+
+            # Honest result: only count as applied when a confirmation marker was
+            # seen, so silent failures are retried/marked FAILED instead of faked.
+            return applied
             
         except Exception as e:
             self.logger.error(f"Error applying to Instahyre job: {e}", exc_info=True)

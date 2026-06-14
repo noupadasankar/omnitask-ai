@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   ArrowRight,
   Bot,
@@ -18,6 +18,10 @@ import {
   AlertTriangle,
   RefreshCw,
   Zap,
+  Boxes,
+  Gauge,
+  Server,
+  Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -268,55 +272,7 @@ export default function HomePage() {
           transition={{ delay: 0.4 }}
           className="mt-24 w-full max-w-6xl"
         >
-          <div className="overflow-hidden rounded-[32px] border border-white/10 bg-black/40 shadow-2xl backdrop-blur-xl">
-            {/* WINDOW TOP HEADER */}
-            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex gap-2">
-                  <div className="h-3 w-3 rounded-full bg-red-500" />
-                  <div className="h-3 w-3 rounded-full bg-yellow-500" />
-                  <div className="h-3 w-3 rounded-full bg-emerald-500" />
-                </div>
-                <span className="font-mono text-sm text-zinc-500">autonomous-runtime.console</span>
-              </div>
-              <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-400">
-                LIVE
-              </div>
-            </div>
-
-            {/* CONTENT SPLIT */}
-            <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
-              {/* RUNTIME STREAM */}
-              <div className="border-b border-white/10 p-6 lg:border-b-0 lg:border-r text-left">
-                <div className="mb-6 flex items-center gap-3">
-                  <div className="animate-pulse h-3 w-3 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444]" />
-                  <span className="font-mono text-sm text-zinc-400">Executing autonomous workflow</span>
-                </div>
-                <div className="space-y-3 font-mono text-xs sm:text-sm text-zinc-500">
-                  <p>→ Initializing <span className="text-purple-400">PlannerAgent</span>...</p>
-                  <p>→ Building Directed Acyclic Graph (DAG) flow...</p>
-                  <p>→ Launching sandboxed <span className="text-blue-400">BrowserAgent</span>...</p>
-                  <p>→ Guardrail verification sequence completed successfully...</p>
-                  <p>→ Automated competitor price analysis completed...</p>
-                  <p className="text-emerald-400">→ Task execution resolved. Output: CSV stored in database.</p>
-                </div>
-              </div>
-
-              {/* TELEMETRY */}
-              <div className="p-6 text-left">
-                <div className="mb-6 flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-zinc-300">Runtime Telemetry</h3>
-                  <div className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-300 font-mono">Active</div>
-                </div>
-                <div className="space-y-4">
-                  <Metric label="Active Agents" value="04" />
-                  <Metric label="Queue Depth" value="12" />
-                  <Metric label="Execution Success" value="98.2%" />
-                  <Metric label="Runtime Health" value="Operational" success />
-                </div>
-              </div>
-            </div>
-          </div>
+          <HeroConsole />
         </motion.div>
       </section>
 
@@ -486,32 +442,6 @@ export default function HomePage() {
       </AnimatePresence>
 
       {/* ===================================================== */}
-      {/* STATS BAR  — social proof, not in hero or features   */}
-      {/* ===================================================== */}
-      <section className="border-t border-white/[0.05] bg-transparent">
-        <div className="mx-auto max-w-7xl px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {[
-            { value: '4',     label: 'Specialized Agents',  sub: 'Planner · Browser · Verifier · Supervisor', color: 'text-red-400' },
-            { value: '98.2%', label: 'Execution Success',   sub: 'Across all workflow types',                  color: 'text-emerald-400' },
-            { value: '<20ms', label: 'Checkpoint Latency',  sub: 'Write-to-store, Redis-backed',               color: 'text-cyan-400' },
-            { value: '∞',     label: 'Task Domains',        sub: 'Browser · API · File · Form · Data',         color: 'text-purple-400' },
-          ].map((s, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07 }}
-              viewport={{ once: true }}
-            >
-              <p className={`text-4xl font-black font-mono ${s.color}`}>{s.value}</p>
-              <p className="mt-2 text-sm font-bold text-white">{s.label}</p>
-              <p className="mt-1 text-xs text-zinc-600">{s.sub}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* ===================================================== */}
       {/* PRE-FOOTER CTA — re-engage before they leave          */}
       {/* ===================================================== */}
       <section className="border-t border-white/[0.05]">
@@ -553,15 +483,36 @@ export default function HomePage() {
       {/* ===================================================== */}
       {/* FOOTER                                                */}
       {/* ===================================================== */}
-      <footer className="border-t border-white/[0.06] bg-transparent">
+      <footer className="relative border-t border-white/[0.06] bg-transparent overflow-hidden">
+        {/* ambient glow */}
+        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-48 w-[40rem] rounded-full bg-red-500/[0.06] blur-[120px]" />
 
         {/* ── Nav columns ── */}
-        <div className="mx-auto max-w-7xl px-6 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
+        <div className="relative mx-auto max-w-7xl px-6 py-16 grid grid-cols-2 gap-10 md:grid-cols-12 md:gap-8">
 
-       
+          {/* Brand */}
+          <div className="col-span-2 md:col-span-4 md:pr-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 red-glow">
+                <Bot className="h-6 w-6 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold tracking-wide text-white">OmniTask AI</h3>
+                <p className="text-xs text-zinc-500">Autonomous Operations</p>
+              </div>
+            </div>
+            <p className="mt-5 max-w-xs text-sm leading-relaxed text-zinc-500">
+              Enterprise-grade orchestration for AI agents that plan, browse, automate,
+              and verify real-world workflows — end to end.
+            </p>
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              All systems operational
+            </div>
+          </div>
 
           {/* Platform */}
-          <div>
+          <div className="md:col-span-2">
             <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Platform</p>
             <ul className="space-y-3">
               {[
@@ -581,7 +532,7 @@ export default function HomePage() {
           </div>
 
           {/* Capabilities */}
-          <div>
+          <div className="md:col-span-3">
             <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Capabilities</p>
             <ul className="space-y-3">
               {[
@@ -601,7 +552,7 @@ export default function HomePage() {
           </div>
 
           {/* Agent System */}
-          <div>
+          <div className="md:col-span-3">
             <p className="text-[9px] font-bold tracking-[0.2em] text-zinc-600 uppercase mb-5">Agent System</p>
             <ul className="space-y-3">
               {[
@@ -622,7 +573,24 @@ export default function HomePage() {
         </div>
 
         {/* ── Brand baseline ── */}
-        
+        <div className="relative border-t border-white/[0.06]">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 py-6 sm:flex-row">
+            <p className="text-xs text-zinc-600">
+              © 2026 OmniTask AI. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6">
+              {['Privacy', 'Terms', 'Security', 'Status'].map((l) => (
+                <a
+                  key={l}
+                  href="#"
+                  className="text-xs text-zinc-600 hover:text-white transition-colors"
+                >
+                  {l}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
 
       </footer>
     </div>
@@ -994,21 +962,191 @@ function ObservabilitySim() {
     );
 }
 
-function Metric({
+/* =====================================================
+   HERO LIVE CONSOLE
+   ===================================================== */
+
+interface LogLine {
+  t: string;
+  level: string;
+  text: string;
+  agent?: string;
+  agentColor?: string;
+  tag: string;
+  done?: boolean;
+}
+
+const HERO_LOGS: LogLine[] = [
+  { t: '12:20:01', level: 'BOOT',  text: 'Initializing runtime…', agent: 'PlannerAgent', agentColor: 'text-purple-300', tag: 'border-purple-500/25 bg-purple-500/10 text-purple-300' },
+  { t: '12:20:02', level: 'GRAPH', text: 'Compiling Directed Acyclic Graph (DAG)…', tag: 'border-white/10 bg-white/[0.04] text-zinc-300' },
+  { t: '12:20:03', level: 'AGENT', text: 'Launching sandboxed', agent: 'BrowserAgent', agentColor: 'text-blue-300', tag: 'border-blue-500/25 bg-blue-500/10 text-blue-300' },
+  { t: '12:20:05', level: 'GUARD', text: 'Guardrail verification sequence passed.', tag: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300' },
+  { t: '12:20:07', level: 'TASK',  text: 'Competitor price analysis completed.', tag: 'border-amber-500/25 bg-amber-500/10 text-amber-300' },
+  { t: '12:20:08', level: 'DONE',  text: 'Resolved · CSV stored in database.', tag: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300', done: true },
+];
+
+function HeroConsole() {
+  // Stream the log lines in one by one, then loop.
+  const [count, setCount] = useState(1);
+  const [queue, setQueue] = useState(12);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCount((c) => (c >= HERO_LOGS.length ? 1 : c + 1));
+    }, 1100);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    // Gently flicker the queue depth so telemetry feels live.
+    const id = setInterval(() => {
+      setQueue((q) => Math.max(3, Math.min(24, q + (Math.random() > 0.5 ? 1 : -1) * (1 + Math.floor(Math.random() * 3)))));
+    }, 1600);
+    return () => clearInterval(id);
+  }, []);
+
+  const visible = HERO_LOGS.slice(0, count);
+  const progress = Math.round((count / HERO_LOGS.length) * 100);
+  const finished = count === HERO_LOGS.length;
+
+  return (
+    <div className="overflow-hidden rounded-[32px] border border-white/10 bg-gradient-to-b from-zinc-950/80 to-black/60 shadow-2xl backdrop-blur-xl">
+      {/* WINDOW TOP HEADER */}
+      <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2">
+            <div className="h-3 w-3 rounded-full bg-red-500/90" />
+            <div className="h-3 w-3 rounded-full bg-yellow-500/90" />
+            <div className="h-3 w-3 rounded-full bg-emerald-500/90" />
+          </div>
+          <span className="hidden font-mono text-xs text-zinc-500 sm:inline">
+            <span className="text-zinc-600">~/omnitask/</span>autonomous-runtime.console
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold tracking-wider text-emerald-400">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
+          LIVE
+        </div>
+      </div>
+
+      {/* CONTENT SPLIT */}
+      <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
+        {/* RUNTIME STREAM */}
+        <div className="border-b border-white/10 p-5 text-left lg:border-b-0 lg:border-r sm:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_10px_#ef4444]" />
+              <span className="font-mono text-xs text-zinc-300 sm:text-sm">Executing autonomous workflow</span>
+            </div>
+            <span className="font-mono text-[11px] text-zinc-500">
+              {finished ? 'done' : `step ${count}/${HERO_LOGS.length}`}
+            </span>
+          </div>
+
+          {/* progress bar */}
+          <div className="mb-5 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+            <motion.div
+              className={cn('h-full rounded-full', finished ? 'bg-emerald-500' : 'bg-red-500')}
+              animate={{ width: `${progress}%` }}
+              transition={{ ease: 'easeOut', duration: 0.5 }}
+            />
+          </div>
+
+          {/* log stream */}
+          <div className="min-h-[210px] space-y-2">
+            <AnimatePresence initial={false}>
+              {visible.map((log) => (
+                <motion.div
+                  key={log.t}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex items-start gap-3 font-mono text-[11px] sm:text-xs"
+                >
+                  <span className="select-none pt-0.5 text-zinc-600">{log.t}</span>
+                  <span className={cn('rounded-md border px-1.5 py-0.5 text-[9px] font-bold tracking-wider', log.tag)}>
+                    {log.level}
+                  </span>
+                  <span className={cn('pt-0.5 leading-relaxed', log.done ? 'text-emerald-300' : 'text-zinc-400')}>
+                    {log.text}{' '}
+                    {log.agent && <span className={cn('font-semibold', log.agentColor)}>{log.agent}</span>}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {!finished && (
+              <div className="flex items-center gap-2 pl-[3.6rem] font-mono text-xs text-zinc-600">
+                <span className="inline-block h-3.5 w-1.5 animate-pulse bg-red-500/70" />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* TELEMETRY */}
+        <div className="bg-white/[0.01] p-5 text-left sm:p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Runtime Telemetry</h3>
+            <span className="rounded-full bg-red-500/10 px-2 py-0.5 font-mono text-[10px] text-red-300">live</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <TelemetryCard icon={Boxes} label="Active Agents" value="04" accent="text-red-400">
+              <div className="mt-2 flex gap-1">
+                {[0, 1, 2, 3].map((i) => (
+                  <span key={i} className="h-1 flex-1 rounded-full bg-red-500/70" />
+                ))}
+              </div>
+            </TelemetryCard>
+
+            <TelemetryCard icon={Layers} label="Queue Depth" value={String(queue).padStart(2, '0')} accent="text-blue-400">
+              <div className="mt-2 flex items-end gap-0.5 h-4">
+                {[6, 10, 7, 12, 9, 14, 11].map((h, i) => (
+                  <span key={i} className="flex-1 rounded-sm bg-blue-500/50" style={{ height: `${(h / 14) * 100}%` }} />
+                ))}
+              </div>
+            </TelemetryCard>
+
+            <TelemetryCard icon={Gauge} label="Success Rate" value="98.2%" accent="text-emerald-400">
+              <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                <div className="h-full w-[98%] rounded-full bg-emerald-500/80" />
+              </div>
+            </TelemetryCard>
+
+            <TelemetryCard icon={Server} label="Health" value="Operational" accent="text-emerald-400" small>
+              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-emerald-400/80">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                nominal
+              </div>
+            </TelemetryCard>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TelemetryCard({
+  icon: Icon,
   label,
   value,
-  success,
+  accent,
+  small,
+  children,
 }: {
+  icon: any;
   label: string;
   value: string;
-  success?: boolean;
+  accent: string;
+  small?: boolean;
+  children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/45 px-4 py-3 sm:py-4">
-      <span className="text-sm text-zinc-500">{label}</span>
-      <span className={cn("text-sm font-semibold", success ? "text-emerald-400" : "text-white")}>
-        {value}
-      </span>
+    <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-3.5 transition-colors hover:border-white/10">
+      <div className="flex items-center gap-1.5 text-zinc-500">
+        <Icon className="h-3.5 w-3.5" />
+        <span className="font-mono text-[9px] uppercase tracking-wider">{label}</span>
+      </div>
+      <p className={cn('mt-1.5 font-mono font-bold', accent, small ? 'text-sm' : 'text-2xl')}>{value}</p>
+      {children}
     </div>
   );
 }

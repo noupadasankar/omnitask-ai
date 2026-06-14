@@ -29,6 +29,16 @@ export interface LiveApplication {
 const appKey = (a: { portal?: string; externalJobId?: string }) =>
   `${a.portal ?? ''}:${a.externalJobId ?? ''}`;
 
+/** Live job-queue counts emitted by the agent worker (`queue:state`). */
+export interface QueueState {
+  PENDING: number;
+  PROCESSING: number;
+  COMPLETED: number;
+  FAILED: number;
+  SKIPPED: number;
+  total: number;
+}
+
 /**
  * Subscribe to a job-application run's live events on the `/agent` namespace.
  *
@@ -41,6 +51,7 @@ export function useJobAgentSession(sessionId: string | null) {
   const [phase, setPhase] = useState<JobAgentPhase>('idle');
   const [currentScreenshot, setCurrentScreenshot] = useState<ScreenshotFrame | null>(null);
   const [applications, setApplications] = useState<LiveApplication[]>([]);
+  const [queueState, setQueueState] = useState<QueueState | null>(null);
   const [logs, setLogs] = useState<JobLogEntry[]>([]);
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,6 +80,7 @@ export function useJobAgentSession(sessionId: string | null) {
     setPhase('planning');
     setCurrentScreenshot(null);
     setApplications([]);
+    setQueueState(null);
     setLogs([]);
     setPendingApproval(null);
     setErrorMessage(null);
@@ -103,6 +115,18 @@ export function useJobAgentSession(sessionId: string | null) {
           const next = prev.filter((a) => appKey(a) !== key);
           next.push(row);
           return next;
+        });
+      }),
+
+      wsService.on('queue:state', (d: any) => {
+        const c = d?.counts ?? {};
+        setQueueState({
+          PENDING: Number(c.PENDING) || 0,
+          PROCESSING: Number(c.PROCESSING) || 0,
+          COMPLETED: Number(c.COMPLETED) || 0,
+          FAILED: Number(c.FAILED) || 0,
+          SKIPPED: Number(c.SKIPPED) || 0,
+          total: Number(c.total) || 0,
         });
       }),
 
@@ -159,6 +183,7 @@ export function useJobAgentSession(sessionId: string | null) {
     phase,
     currentScreenshot,
     applications,
+    queueState,
     logs,
     pendingApproval,
     errorMessage,
