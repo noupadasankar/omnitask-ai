@@ -57,6 +57,11 @@ class BasePortal(ABC):
         # When set (by the orchestrator), every candidate is streamed to the
         # dashboard and each submit is gated by approve-before-submit.
         self.bridge = None
+
+        # Cognitive engine — the Claude reasoning loop (LLM-first). None → the
+        # rule-based selector flow only. Set by the orchestrator when an
+        # ANTHROPIC_API_KEY is configured.
+        self.cognition = None
     
     @abstractmethod
     async def login(self) -> bool:
@@ -471,6 +476,154 @@ class BasePortal(ABC):
             Application count
         """
         return self.applications_count
+
+    # ── Cognitive (LLM-first) application path ────────────────────────────────
+    #
+    # When a Claude engine is configured, portals hand the brittle, layout-variable
+    # part of an application — completing and submitting the form — to the
+    # observe→reason→act→verify loop, falling back to their rule-based flow only
+    # when the engine is unavailable or fails for a technical reason.
+
+    def _cognitive_profile(self, job: Dict) -> Dict[str, Any]:
+        """Assemble the applicant profile the cognitive loop answers from.
+
+        Drawn from the parsed resume + preferences (the same material the
+        rule-based autofill uses) plus the job under consideration. The loop
+        treats this as the ONLY source of truth and won't fabricate beyond it.
+        """
+        ctx = self._answer_context()
+        prefs = self.user_preferences or {}
+        profile = prefs.get('user_profile', {}) or {}
+        p = prefs.get('preferences', {}) or {}
+        common = prefs.get('application_settings', {}).get('common_answers', {}) or {}
+        locations = p.get('locations') or []
+        return {
+            'name': ctx['name'],
+            'email': ctx['email'],
+            'phone': ctx['phone'],
+            'location': profile.get('location') or (locations[0] if locations else None),
+            'years_of_experience': ctx['years'],
+            'skills': self.resume_data.get('skills', []),
+            'current_company': self.resume_data.get('current_company'),
+            'expected_salary': ctx['expected_ctc'],
+            'current_salary': str(common.get('current_ctc') or ''),
+            'notice_period': ctx['notice'],
+            'willing_to_relocate': common.get('willing_to_relocate', 'Yes'),
+            'work_authorization': profile.get('work_authorization') or common.get('work_authorization'),
+            'requires_sponsorship': profile.get('requires_sponsorship'),
+            'linkedin': profile.get('linkedin'),
+            'github': profile.get('github'),
+            'portfolio': profile.get('portfolio'),
+            'common_answers': common,
+            'applying_to': {
+                'role': job.get('role'),
+                'company': job.get('company'),
+                'location': job.get('location'),
+            },
+        }
+
+    async def _cog_emit(self, kind: str, payload: Dict[str, Any]) -> None:
+        """Bridge cognitive log/state events to the dashboard (and the local log)."""
+        if kind == 'log':
+            msg = payload.get('message', '')
+            level = payload.get('level', 'info')
+            if level == 'error':
+                self.logger.error(msg)
+            elif level in ('warn', 'warning'):
+                self.logger.warning(msg)
+            else:
+                self.logger.info(msg)
+            if self.bridge is not None and hasattr(self.bridge, 'log'):
+                await self.bridge.log(msg, level)
+        elif kind == 'state':
+            if self.bridge is not None and hasattr(self.bridge, 'emit_cognition'):
+                await self.bridge.emit_cognition(payload)
+        elif kind == 'trajectory':
+            if self.bridge is not None and hasattr(self.bridge, 'emit_trajectory'):
+                await self.bridge.emit_trajectory(payload)
+
+    async def _complete_application_cognitively(self, page, job: Dict, *,
+                                                context_hint: str = "") -> Optional[bool]:
+        """Try to complete + submit this application with the cognitive loop.
+
+        Returns:
+            True  — submitted (or already applied) → treat as APPLIED.
+            False — principled stop (blocked / needs human) → skip the job; do
+                    NOT fall back to the fabricating rule-based flow.
+            None  — engine unavailable or a technical failure → caller should
+                    fall back to its rule-based apply flow.
+        """
+        engine = getattr(self, 'cognition', None)
+        if engine is None:
+            return None
+        # Local model server (Ollama) reachable? Probe is cached after first call.
+        try:
+            if not await engine.is_available():
+                self.logger.info(
+                    "Local AI engine (Ollama) not reachable — using rule-based flow."
+                )
+                return None
+        except Exception as exc:  # noqa: BLE001
+            self.logger.info(f"Local AI engine check failed ({exc}); using rule-based flow.")
+            return None
+        try:
+            from src.cognition.applier import CognitiveApplier
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(f"Cognitive engine import failed ({exc}); using rule-based flow.")
+            return None
+        try:
+            applier = CognitiveApplier(engine, page, emit=self._cog_emit, logger=self.logger)
+            outcome = await applier.apply(
+                job, profile=self._cognitive_profile(job), context_hint=context_hint
+            )
+        except Exception as exc:  # noqa: BLE001 — any crash → fall back, never abort the run
+            self.logger.error(f"Cognitive applier crashed ({exc}); falling back.", exc_info=True)
+            return None
+
+        if outcome.submitted:
+            return True
+        if outcome.should_fallback:
+            self.logger.info(
+                "Cognitive applier abandoned (technical) — falling back to rule-based flow."
+            )
+            return None
+        self.logger.warning(
+            f"Cognitive applier stopped (state={outcome.state.value}): {outcome.summary}"
+        )
+        return False
+
+    async def _search_jobs_cognitively(self, *, start_url: Optional[str] = None,
+                                       max_jobs: int = 25) -> Optional[List[Dict]]:
+        """Universal job discovery via observation — works on any site, no
+        per-site selectors. Returns job dicts (same shape as `search_jobs`) or
+        None when the local engine is unavailable / finds nothing, so the caller
+        falls back to its rule-based scrape.
+        """
+        engine = getattr(self, 'cognition', None)
+        if engine is None:
+            return None
+        try:
+            if not await engine.is_available():
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+        try:
+            from src.cognition.search.searcher import CognitiveSearcher
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(f"Cognitive search import failed ({exc}); using rule-based search.")
+            return None
+        try:
+            page = self.browser.get_page()
+            searcher = CognitiveSearcher(engine, page, emit=self._cog_emit, logger=self.logger)
+            prefs = (self.user_preferences or {}).get('preferences', {}) or {}
+            jobs = await searcher.find_jobs(
+                portal=self.portal_name, start_url=start_url,
+                max_jobs=max_jobs, preferences=prefs,
+            )
+            return jobs or None
+        except Exception as exc:  # noqa: BLE001 — never let search crash the run
+            self.logger.error(f"Cognitive search failed ({exc}); falling back.", exc_info=True)
+            return None
 
     # ── Generic application-form auto-fill (shared by every portal) ───────────
     #

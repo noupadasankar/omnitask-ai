@@ -13,6 +13,21 @@ export interface ReplayFrame {
   status: string;
 }
 
+/** One captured reasoning step of the cognitive agent (the "AI monologue"). */
+export interface ReplayThought {
+  stepIndex: number;
+  timestamp: number;
+  tool?: string;
+  thought?: string;
+  confidence?: number;
+  risk?: number;
+  url?: string;
+  /** The model's raw {thought, assessment, action} JSON, for the deep-dive view. */
+  decision?: unknown;
+  /** Short excerpt of what the model saw, for context. */
+  observation?: string;
+}
+
 @Injectable()
 export class TaskReplayService {
   private readonly logger = new Logger(TaskReplayService.name);
@@ -52,6 +67,41 @@ export class TaskReplayService {
       durationMs: step.durationMs || 0,
       status: step.status,
     }));
+  }
+
+  /**
+   * The "AI monologue" for a session: the per-step reasoning the cognitive agent
+   * produced, captured in TrajectoryStep. Returns [] for non-cognitive runs (no
+   * trajectory rows) so the replay UI simply omits the panel.
+   */
+  async getReplayThoughts(sessionId: string): Promise<ReplayThought[]> {
+    this.logger.log(`Fetching trajectory thoughts for session ${sessionId}`);
+
+    const steps = await this.prisma.trajectoryStep.findMany({
+      where: { sessionId },
+      orderBy: { stepIndex: 'asc' },
+    });
+
+    return steps.map((s: any) => {
+      const decision =
+        s.decision && typeof s.decision === 'object' ? s.decision : undefined;
+      const thought =
+        (decision && typeof decision.thought === 'string' && decision.thought) ||
+        undefined;
+      const obs =
+        typeof s.observation === 'string' ? s.observation.slice(0, 1500) : undefined;
+      return {
+        stepIndex: s.stepIndex,
+        timestamp: s.createdAt.getTime(),
+        tool: s.tool || undefined,
+        thought,
+        confidence: typeof s.confidence === 'number' ? s.confidence : undefined,
+        risk: typeof s.risk === 'number' ? s.risk : undefined,
+        url: s.url || undefined,
+        decision,
+        observation: obs,
+      };
+    });
   }
 
   async getSessionTimeline(sessionId: string): Promise<any> {

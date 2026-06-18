@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
@@ -17,6 +18,15 @@ async function bootstrap() {
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3000';
 
   app.setGlobalPrefix('api');
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Omnitask API')
+    .setDescription('Omnitask backend API')
+    .setVersion('1.0')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document);
   const allowedOrigins = [frontendUrl, 'http://localhost:3000'];
   app.enableCors({
     // Allow the configured frontend plus any localhost/127.0.0.1 origin (any port)

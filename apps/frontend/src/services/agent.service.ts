@@ -90,6 +90,27 @@ export async function getSessionReplay(sessionId: string): Promise<{ replay: any
   return data;
 }
 
+export interface ReplayThought {
+  stepIndex: number;
+  timestamp: number;
+  tool?: string;
+  thought?: string;
+  confidence?: number;
+  risk?: number;
+  url?: string;
+  decision?: unknown;
+  observation?: string;
+}
+
+export async function getSessionThoughts(
+  sessionId: string,
+): Promise<{ thoughts: ReplayThought[] }> {
+  const { data } = await api.get<{ thoughts: ReplayThought[] }>(
+    `/agent/session/${sessionId}/thoughts`,
+  );
+  return data;
+}
+
 export async function getSessionTimeline(sessionId: string): Promise<any> {
   const { data } = await api.get<any>(`/agent/session/${sessionId}/timeline`);
   return data;

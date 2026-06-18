@@ -18,22 +18,15 @@ before the real submit. `JOB_AGENT_AUTO_APPROVE=true` skips the gate (autonomous
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-import sys
-from pathlib import Path
 
+from . import _cognition_loader as loader
 from .base import Skill, SkillContext
 
 log = logging.getLogger("browser-py.skills.job")
 
-# job_agent couples to its own working directory for config/, data/sessions/,
-# logs/ and the SQLite tracker. The engine runs jobs concurrently, so we
-# serialize job-application runs to keep the chdir window safe.
-_RUN_LOCK = asyncio.Lock()
-
-_JOB_AGENT_ROOT = Path(__file__).resolve().parents[1] / "agents" / "job_agent"
+_JOB_AGENT_ROOT = loader.JOB_AGENT_ROOT
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -111,6 +104,31 @@ class _PortalBridge:
             },
         )
 
+    async def log(self, message: str, level: str = "info") -> None:
+        """Stream a cognitive-loop log line to the dashboard terminal."""
+        await self.ctx.log(message, source="Cognition", level=level)
+
+    async def emit_cognition(self, state: dict) -> None:
+        """Stream the agent's world-model state to the dashboard.
+
+        Published as `cognition:state`; the backend relay auto-forwards unknown
+        event types to the socket (same path as `queue:state`), so the UI can
+        render the live reasoning without a backend change."""
+        await self.publisher.publish(
+            self.session_id,
+            "cognition:state",
+            {"sessionId": self.session_id, "userId": self.user_id, **state},
+        )
+
+    async def emit_trajectory(self, payload: dict) -> None:
+        """Stream one (state→decision) training step as `trajectory:step`
+        (persisted by the relay into the TrajectoryStep training data lake)."""
+        await self.publisher.publish(
+            self.session_id,
+            "trajectory:step",
+            {"sessionId": self.session_id, "userId": self.user_id, **payload},
+        )
+
     async def gate(self, job: dict, match_result: dict) -> bool:
         """Request approval for a submit and block until the user responds.
 
@@ -173,10 +191,9 @@ class JobApplicationSkill(Skill):
             source="JobAgent",
         )
 
-        # Serialize: chdir + sys.path mutation are process-global, and the engine
-        # runs jobs concurrently. One job-application run at a time.
-        async with _RUN_LOCK:
-            await self._run_locked(ctx, bridge, override, dry_run)
+        # Serialize + mount the job_agent root (chdir + sys.path are process-
+        # global, and the engine runs jobs concurrently). One mount at a time.
+        await self._run_locked(ctx, bridge, override, dry_run)
 
         applied = sum(1 for a in bridge.applications if a.get("status") == "APPLIED")
         await ctx.log(
@@ -187,47 +204,34 @@ class JobApplicationSkill(Skill):
         return self.ok(bridge.applications)
 
     async def _run_locked(self, ctx, bridge, override, dry_run) -> None:
-        prev_cwd = os.getcwd()
-        path_added = False
-        root = str(_JOB_AGENT_ROOT)
         orchestrator = None
-        try:
-            os.chdir(root)
-            if root not in sys.path:
-                sys.path.insert(0, root)
-                path_added = True
-
+        async with loader.mount_job_agent():
             try:
-                from src.agent.orchestrator import JobAgentOrchestrator  # type: ignore
-            except Exception as exc:  # noqa: BLE001 — surface a clear dependency hint
-                await ctx.log(
-                    f"Could not import job_agent ({exc}). Ensure its deps are installed "
-                    f"(pip install -r agents/job_agent/requirements.txt) and a resume "
-                    f"exists in agents/job_agent/config/.",
-                    source="JobAgent",
-                    level="error",
-                )
-                raise
+                try:
+                    from src.agent.orchestrator import JobAgentOrchestrator  # type: ignore
+                except Exception as exc:  # noqa: BLE001 — surface a clear dependency hint
+                    await ctx.log(
+                        f"Could not import job_agent ({exc}). Ensure its deps are installed "
+                        f"(pip install -r agents/job_agent/requirements.txt) and a resume "
+                        f"exists in agents/job_agent/config/.",
+                        source="JobAgent",
+                        level="error",
+                    )
+                    raise
 
-            orchestrator = JobAgentOrchestrator(
-                config_path="config/preferences.yaml",
-                bridge=bridge,
-                preferences_override=override,
-            )
-            await orchestrator.run(
-                page=ctx.page,
-                context=ctx.page.context,
-                dry_run=dry_run,
-            )
-        finally:
-            if orchestrator is not None:
-                try:
-                    orchestrator.close()
-                except Exception:  # noqa: BLE001
-                    pass
-            os.chdir(prev_cwd)
-            if path_added:
-                try:
-                    sys.path.remove(root)
-                except ValueError:
-                    pass
+                orchestrator = JobAgentOrchestrator(
+                    config_path="config/preferences.yaml",
+                    bridge=bridge,
+                    preferences_override=override,
+                )
+                await orchestrator.run(
+                    page=ctx.page,
+                    context=ctx.page.context,
+                    dry_run=dry_run,
+                )
+            finally:
+                if orchestrator is not None:
+                    try:
+                        orchestrator.close()
+                    except Exception:  # noqa: BLE001
+                        pass

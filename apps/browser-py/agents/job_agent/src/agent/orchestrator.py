@@ -53,6 +53,22 @@ class JobAgentOrchestrator:
         # Initialize components
         self.db = DatabaseTracker()
         self.llm = get_llm_client(self.env.get('llm_model', 'claude-sonnet-4.5'))
+
+        # Cognitive engine — a FULLY LOCAL reasoning loop (no API key, no cloud).
+        # Runs on-device models via Ollama. When the local server is reachable,
+        # portals delegate form completion to it; otherwise they fall back to the
+        # rule-based flow. Availability is probed at apply time (needs awaiting).
+        try:
+            from src.cognition.engine import LocalEngine
+            self.cognition = LocalEngine()
+            self.logger.info(
+                f"🧠 Local cognitive engine ready (Ollama {self.cognition.host}, "
+                f"reasoning model: {self.cognition.model}). No API key required — "
+                f"availability is checked when the first application starts."
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.logger.warning(f"Local cognitive engine unavailable: {exc}")
+            self.cognition = None
         
         # Load resume
         resume_file = find_resume_file()
@@ -244,6 +260,8 @@ class JobAgentOrchestrator:
         # Hand the OmniTask bridge to the portal so it streams results + gates
         # each submit through the dashboard (None → original standalone flow).
         portal.bridge = self.bridge
+        # Hand the cognitive engine to the portal (None → rule-based only).
+        portal.cognition = getattr(self, 'cognition', None)
         return portal
 
     def _apply_preferences_override(self, override: Dict) -> None:

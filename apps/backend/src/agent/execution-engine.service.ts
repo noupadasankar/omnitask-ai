@@ -400,10 +400,12 @@ export class ExecutionEngineService implements OnModuleDestroy {
       // LLM planner is unavailable, or a broken "navigate: missing URL". So
       // whenever a domain HAS a Python skill, always use it (executor.py ignores
       // the step plan when a skill is set). Domains without one (travel) keep the
-      // inline plugin plan; an unmatched goal falls back to the 'generic' skill.
+      // inline plugin plan; an unmatched goal falls back to the cognitive
+      // 'web_task' agent (observe→reason→act on any site; it degrades to the
+      // generic search skill when the local model is unavailable).
       const skillHint =
         SKILL_BY_DOMAIN[routed.domain] ||
-        (routed.matchedSkills.length === 0 ? 'generic' : undefined);
+        (routed.matchedSkills.length === 0 ? 'web_task' : undefined);
 
       const dispatched = await this.workerDispatcher.dispatch(
         sessionId,

@@ -1,8 +1,9 @@
 """Skill registry + dispatcher for the Python browser engine.
 
 `run_domain_skill(name, ...)` is called by the executor when a job carries a
-`domain`/`skill` hint. Unknown names fall back to the generic web skill, so the
-engine can attempt *any* goal the user asks for.
+`domain`/`skill` hint. Unknown names fall back to the cognitive web-task skill
+(which itself degrades to the generic search skill when the local model is
+down), so the engine can attempt *any* goal the user asks for.
 """
 
 import logging
@@ -16,6 +17,7 @@ from .job_application import JobApplicationSkill
 from .food import FoodSkill
 from .social import SocialSkill
 from .generic import GenericSkill
+from .web_task import WebTaskSkill
 
 log = logging.getLogger("browser-py.skills")
 
@@ -27,6 +29,7 @@ _SKILLS = {
     "job_application": JobApplicationSkill(),
     "food": FoodSkill(),
     "social": SocialSkill(),
+    "web_task": WebTaskSkill(),
     "generic": GenericSkill(),
 }
 
@@ -40,9 +43,11 @@ _ALIASES = {
     "shop": "shopping",
     "price_comparison": "shopping",
     "food_order": "food",
-    "travel": "generic",   # travel intelligence is plan-driven on the Node side
-    "general": "generic",
-    "web": "generic",
+    "travel": "web_task",   # travel intelligence is plan-driven on the Node side
+    "general": "web_task",
+    "web": "web_task",
+    "computer_use": "web_task",
+    "task": "web_task",
 }
 
 _AI = AIClient()
@@ -51,7 +56,8 @@ _AI = AIClient()
 def _resolve(name: str):
     key = (name or "").strip().lower()
     key = _ALIASES.get(key, key)
-    return _SKILLS.get(key, _SKILLS["generic"]), key
+    # Unknown goals get the cognitive web agent (which falls back to search).
+    return _SKILLS.get(key, _SKILLS["web_task"]), key
 
 
 async def run_domain_skill(name, page, publisher, session_id, goal, job, user_id) -> dict:

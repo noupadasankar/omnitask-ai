@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Calendar, Monitor, Cpu } from 'lucide-react';
 import Link from 'next/link';
-import { getSessionReplay, getAgentSession } from '@/services/agent.service';
+import { getSessionReplay, getAgentSession, getSessionThoughts, ReplayThought } from '@/services/agent.service';
 import { cn } from '@/lib/utils';
 
 export default function ReplayPage({ params }: { params: { sessionId: string } }) {
   const [replayFrames, setReplayFrames] = useState<any[]>([]);
   const [sessionInfo, setSessionInfo] = useState<any>(null);
+  const [thoughts, setThoughts] = useState<ReplayThought[]>([]);
+  const [showRaw, setShowRaw] = useState(false);
   const [loading, setLoading] = useState(true);
   
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
@@ -26,6 +28,13 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
         ]);
         setReplayFrames(repData.replay || []);
         setSessionInfo(sessData);
+        // The AI monologue is best-effort: cognitive runs have it, others don't.
+        try {
+          const t = await getSessionThoughts(params.sessionId);
+          setThoughts(t.thoughts || []);
+        } catch {
+          setThoughts([]);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -57,6 +66,38 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
   }, [isPlaying, replayFrames.length, playSpeed]);
 
   const activeFrame = replayFrames[currentFrameIndex];
+  // Align the AI monologue to the SCREENSHOT by stepIndex, not array position.
+  // Frames (execution steps that produced a screenshot) and thoughts (trajectory
+  // reasoning rows) drift apart whenever a step reasons but produces no frame —
+  // e.g. a firewall-blocked, gated, vision, or extract step. Positional alignment
+  // then shows the WRONG thought for a frame. Match by stepIndex, falling back to
+  // the most recent reasoning at-or-before this frame's step.
+  const { activeThought, thoughtIsApprox } = useMemo<{
+    activeThought: ReplayThought | null;
+    thoughtIsApprox: boolean;
+  }>(() => {
+    if (!thoughts.length) return { activeThought: null, thoughtIsApprox: false };
+    const frameStep = activeFrame?.stepIndex;
+    if (typeof frameStep !== 'number') {
+      // Frame carries no stepIndex — degrade to the old positional alignment.
+      return {
+        activeThought: thoughts[Math.min(currentFrameIndex, thoughts.length - 1)],
+        thoughtIsApprox: true,
+      };
+    }
+    const exact = thoughts.find((t) => t.stepIndex === frameStep);
+    if (exact) return { activeThought: exact, thoughtIsApprox: false };
+    // Nearest reasoning at or before this frame's step (the decision that led here).
+    const preceding = thoughts
+      .filter((t) => t.stepIndex <= frameStep)
+      .sort((a, b) => b.stepIndex - a.stepIndex)[0];
+    return { activeThought: preceding ?? null, thoughtIsApprox: true };
+  }, [thoughts, activeFrame, currentFrameIndex]);
+
+  // A frame whose stored outcome wasn't a clean success (failed / blocked /
+  // skipped) — surfaced so the scrubber flags where the run deviated.
+  const frameBlocked =
+    !!activeFrame && /fail|block|error|deny|denied|skip/i.test(String(activeFrame.status || ''));
   const dateFormatted = sessionInfo ? new Date(sessionInfo.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
   return (
@@ -100,7 +141,16 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
           <div className="xl:col-span-2 rounded-3xl border border-white/5 bg-zinc-950/40 p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">SCREEN BUFFER FRAME {currentFrameIndex + 1} OF {replayFrames.length}</span>
-              <span className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded uppercase font-bold tracking-widest">PLAYBACK ACTIVE</span>
+              {frameBlocked ? (
+                <span
+                  className="text-xs font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded uppercase font-bold tracking-widest"
+                  title={`Step status: ${activeFrame?.status}`}
+                >
+                  ⚠ {String(activeFrame?.status || 'deviation')}
+                </span>
+              ) : (
+                <span className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded uppercase font-bold tracking-widest">PLAYBACK ACTIVE</span>
+              )}
             </div>
 
             {/* Simulated browser window */}
@@ -194,6 +244,64 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
                 </h3>
               </div>
 
+              {/* AI Monologue — the cognitive reasoning for the active frame */}
+              {activeThought && (
+                <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.03] p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-indigo-300 uppercase tracking-widest">
+                      🧠 AI Monologue
+                      {typeof activeThought.stepIndex === 'number' && (
+                        <span className="ml-1.5 normal-case text-indigo-400/70">· step {activeThought.stepIndex + 1}</span>
+                      )}
+                      {thoughtIsApprox && (
+                        <span
+                          className="ml-1.5 normal-case text-amber-400/80"
+                          title="No reasoning row was recorded for this exact frame; showing the most recent reasoning before it."
+                        >
+                          ≈ nearest
+                        </span>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {activeThought.tool && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/5 text-zinc-300">
+                          {activeThought.tool}
+                        </span>
+                      )}
+                      {typeof activeThought.confidence === 'number' && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+                          conf {activeThought.confidence.toFixed(2)}
+                        </span>
+                      )}
+                      {typeof activeThought.risk === 'number' && (
+                        <span className={cn(
+                          "text-[9px] font-mono px-1.5 py-0.5 rounded border",
+                          activeThought.risk >= 0.6
+                            ? "bg-red-500/10 border-red-500/20 text-red-300"
+                            : "bg-white/[0.04] border-white/5 text-zinc-400",
+                        )}>
+                          risk {activeThought.risk.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-200 leading-relaxed">
+                    {activeThought.thought || <span className="text-zinc-500 italic">No reasoning captured for this step.</span>}
+                  </p>
+                  <button
+                    onClick={() => setShowRaw((v) => !v)}
+                    className="text-[9px] font-mono text-indigo-400 hover:text-indigo-300 uppercase tracking-wider"
+                  >
+                    {showRaw ? '▼ Hide raw decision' : '▶ Show raw decision'}
+                  </button>
+                  {showRaw && (
+                    <pre className="text-[10px] bg-black/60 text-indigo-200 p-2.5 rounded-lg overflow-x-auto max-h-[180px] border border-white/5">
+                      {JSON.stringify(activeThought.decision ?? {}, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
+
               {/* Steps listing */}
               <div className="overflow-y-auto max-h-[460px] space-y-2 pr-1">
                 {replayFrames.map((frame, idx) => (
@@ -218,7 +326,12 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
                     </span>
 
                     <div className="flex-1 min-w-0">
-                      <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider">{frame.action}</div>
+                      <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+                        {frame.action}
+                        {/fail|block|error|deny|denied|skip/i.test(String(frame.status || '')) && (
+                          <span className="text-amber-400" title={`Step status: ${frame.status}`}>⚠</span>
+                        )}
+                      </div>
                       <p className="text-xs font-semibold text-zinc-300 truncate mt-0.5">{frame.description}</p>
                     </div>
                   </button>

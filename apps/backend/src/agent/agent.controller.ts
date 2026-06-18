@@ -319,6 +319,23 @@ export class AgentController {
     return { replay: replayData };
   }
 
+  @Get('session/:sessionId/thoughts')
+  async getSessionThoughts(
+    @Param('sessionId') sessionId: string,
+    @Request() req: any,
+  ) {
+    const session = await this.prisma.executionSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session || session.userId !== req.user.id) {
+      throw new HttpException('Unauthorized', HttpStatus.FORBIDDEN);
+    }
+
+    const thoughts = await this.replayService.getReplayThoughts(sessionId);
+    return { thoughts };
+  }
+
   @Get('session/:sessionId/timeline')
   async getSessionTimeline(
     @Param('sessionId') sessionId: string,

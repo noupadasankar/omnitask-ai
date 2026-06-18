@@ -219,6 +219,9 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       case 'application:result':
         await this.handleApplicationResult(payload);
         return;
+      case 'trajectory:step':
+        await this.handleTrajectoryStep(payload);
+        return;
       default:
         return;
     }
@@ -591,6 +594,60 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
         Number(payload.data.healedStepsCount || 0) > 0,
         verification?.confidence,
       );
+
+      // Grade the full trajectory for the training data lake. GOLD = verified
+      // success; REJECTED = failed (no manual completion signal here yet — a
+      // DEMONSTRATION tag is applied elsewhere when a human finishes manually).
+      await this.gradeTrajectory(
+        session,
+        payload,
+        verifiedSuccess,
+        verification?.score,
+      );
+    }
+  }
+
+  /**
+   * Tag a finished run's trajectory GOLD (verified success) or REJECTED so the
+   * offline trainer can later select only useful trajectories. Best-effort;
+   * skipped silently when no trajectory steps were logged for the session.
+   */
+  private async gradeTrajectory(
+    session: { id: string; userId: string; metadata: unknown },
+    payload: WorkerEventPayload,
+    verifiedSuccess: boolean,
+    score?: number,
+  ): Promise<void> {
+    try {
+      const stepCount = await this.prisma.trajectoryStep.count({
+        where: { sessionId: session.id },
+      });
+      if (stepCount === 0) return; // non-cognitive run — nothing to grade
+
+      const metadata = this.asRecord(session.metadata);
+      const goal =
+        (typeof metadata?.goal === 'string' && metadata.goal) || null;
+      const grade = verifiedSuccess ? 'GOLD' : 'REJECTED';
+      const base = {
+        userId: session.userId,
+        goal,
+        domain: this.extractDomain(session.metadata),
+        grade: grade as any,
+        outcome: payload.data.status ? String(payload.data.status) : null,
+        score: Number.isFinite(Number(score)) ? Number(score) : null,
+        steps: stepCount,
+      };
+
+      await this.prisma.trajectoryRun.upsert({
+        where: { sessionId: session.id },
+        update: base,
+        create: { sessionId: session.id, ...base },
+      });
+      this.logger.log(
+        `[Relay] Trajectory graded ${grade} for session ${session.id} (${stepCount} steps)`,
+      );
+    } catch (err: any) {
+      this.logger.debug(`[Relay] gradeTrajectory failed: ${err.message}`);
     }
   }
 
@@ -832,6 +889,51 @@ export class WorkerEventRelayService implements OnModuleInit, OnModuleDestroy {
       })
       .catch((err) =>
         this.logger.warn(`[Relay] application:result upsert failed: ${err.message}`),
+      );
+  }
+
+  /**
+   * Persist one cognitive (state → decision) reasoning step into the training
+   * data lake. Deduped on (sessionId, stepIndex). Best-effort — a logging
+   * failure must never disrupt the live run. The socket event was already
+   * forwarded to the dashboard before this switch.
+   */
+  private async handleTrajectoryStep(payload: WorkerEventPayload): Promise<void> {
+    const d = payload.data || {};
+    const stepIndex = Number(d.stepIndex);
+    if (!Number.isFinite(stepIndex)) return;
+    const userId =
+      (typeof d.userId === 'string' && d.userId) ||
+      (await this.lookupUserId(payload.sessionId));
+
+    const asJson = (v: unknown): Prisma.InputJsonValue | undefined =>
+      v && typeof v === 'object' ? (v as Prisma.InputJsonValue) : undefined;
+
+    const data = {
+      userId,
+      goal: typeof d.goal === 'string' ? d.goal.slice(0, 1000) : null,
+      domain: typeof d.domain === 'string' ? d.domain : null,
+      url: typeof d.url === 'string' ? d.url.slice(0, 1000) : null,
+      observation: typeof d.observation === 'string' ? d.observation : null,
+      decision: asJson(d.decision),
+      tool: typeof d.tool === 'string' ? d.tool : null,
+      actionResult:
+        typeof d.actionResult === 'string' ? d.actionResult.slice(0, 2000) : null,
+      confidence: Number.isFinite(Number(d.confidence)) ? Number(d.confidence) : null,
+      risk: Number.isFinite(Number(d.risk)) ? Number(d.risk) : null,
+      screenshotRef: typeof d.screenshotRef === 'string' ? d.screenshotRef : null,
+    };
+
+    await this.prisma.trajectoryStep
+      .upsert({
+        where: {
+          sessionId_stepIndex: { sessionId: payload.sessionId, stepIndex },
+        },
+        update: data,
+        create: { sessionId: payload.sessionId, stepIndex, ...data },
+      })
+      .catch((err) =>
+        this.logger.debug(`[Relay] trajectory:step persist failed: ${err.message}`),
       );
   }
 

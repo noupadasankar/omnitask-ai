@@ -568,6 +568,67 @@ enum JobApplicationStatus {
   FAILED
 }
 
+// ─── Training Data Lake (trajectory logging — train later) ─────────────────────
+
+/// One reasoning step of a cognitive agent run, captured for offline training.
+/// Append-only: each row is a (state → decision) pair the local brain produced.
+/// The data accumulates now; fine-tuning consumes it later (no trainer yet).
+model TrajectoryStep {
+  id            String   @id @default(cuid())
+  sessionId     String
+  userId        String?
+  stepIndex     Int
+  goal          String?
+  domain        String?
+  url           String?
+  /// Compact observation the model saw (semantic element tree + page text).
+  observation   String?
+  /// The exact prompt/messages sent to the local model (ChatML-ready).
+  prompt        Json?
+  /// The model's raw JSON decision {thought, assessment, action}.
+  decision      Json?
+  tool          String?
+  /// Result string returned by the tool executor for this action.
+  actionResult  String?
+  confidence    Float?
+  risk          Float?
+  screenshotRef String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sessionId, stepIndex])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([domain])
+}
+
+/// Run-level verdict over a full trajectory, tagged for the training pipeline.
+/// GOLD = verified success; DEMONSTRATION = agent failed but the human finished
+/// it manually (imitation signal); REJECTED = failed, not useful.
+model TrajectoryRun {
+  id          String         @id @default(cuid())
+  sessionId   String         @unique
+  userId      String?
+  goal        String?
+  domain      String?
+  grade       TrajectoryGrade @default(UNGRADED)
+  outcome     String?
+  score       Int?
+  steps       Int            @default(0)
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([grade])
+}
+
+enum TrajectoryGrade {
+  UNGRADED
+  GOLD
+  DEMONSTRATION
+  REJECTED
+}
+
 // ─── Autonomous Shopping Agent ─────────────────────────────────────────────────
 
 /// Per-user shopping preferences used by the rule-based product scorer.

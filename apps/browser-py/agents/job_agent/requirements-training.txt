@@ -1,0 +1,25 @@
+# Offline QLoRA training deps — INSTALL ONLY ON THE TRAINING MACHINE.
+# These are intentionally NOT in requirements.txt: they are large (multi-GB),
+# need a CUDA GPU, and must never load into the running browser engine. The engine
+# imports nothing from here; only `src/training/finetune.py` (run as a script) does.
+#
+#   pip install -r requirements-training.txt
+#
+# A CUDA GPU is required for 4-bit QLoRA on a 7B model. Install the torch build
+# that matches your CUDA (see https://pytorch.org); bitsandbytes needs CUDA too.
+#
+# Versions below are a known-compatible QLoRA stack. TRL's SFTConfig/SFTTrainer
+# API drifts between releases — if finetune.py errors on kwargs, pin to these.
+
+torch>=2.2,<2.6
+transformers>=4.44,<4.46
+datasets>=2.20
+peft>=0.12,<0.14
+trl>=0.11,<0.13
+bitsandbytes>=0.43
+accelerate>=0.33
+sentencepiece>=0.2
+protobuf>=4.25
+
+# GGUF conversion is done with llama.cpp's own convert_hf_to_gguf.py (clone the
+# llama.cpp repo) — it is NOT a pip package and is not listed here.

@@ -107,8 +107,20 @@ class LinkedInPortal(BasePortal):
         - Skip jobs showing "Applied X days ago"
         - Get only jobs with "Easy Apply" button
         """
+        # ── Cognitive (LLM-first) universal search ────────────────────────────
+        # When the local engine is up, discover postings by observation+reasoning
+        # (no LinkedIn-specific selectors). Falls through to the hardcoded scrape
+        # below when the engine is unavailable or finds nothing.
+        cog_jobs = await self._search_jobs_cognitively(
+            start_url="https://www.linkedin.com/jobs/collections/easy-apply/",
+            max_jobs=30,
+        )
+        if cog_jobs:
+            self.logger.info(f"🧠 Cognitive search found {len(cog_jobs)} jobs")
+            return cog_jobs
+
         jobs = []
-        
+
         try:
             # Go to Easy Apply jobs collection
             search_url = "https://www.linkedin.com/jobs/collections/easy-apply/"
@@ -344,7 +356,26 @@ class LinkedInPortal(BasePortal):
             if not modal:
                 self.logger.warning("Easy Apply modal did not appear")
                 return False
-            
+
+            # ── Cognitive (LLM-first) completion ──────────────────────────────
+            # Hand the open Easy Apply form to the Claude reasoning loop, which
+            # completes arbitrary multi-step / screening-question layouts
+            # generically (observe→reason→act→verify). Returns True (submitted) /
+            # False (blocked — honest skip). Returns None when the engine is
+            # unavailable or fails technically, in which case we fall through to
+            # the deterministic selector flow below.
+            cog = await self._complete_application_cognitively(
+                page, job,
+                context_hint=(
+                    "The LinkedIn Easy Apply modal is now open for this job. "
+                    "The resume is typically already attached. Complete every step "
+                    "(contact info, screening questions, review), uncheck 'Follow "
+                    "company', and submit the application."
+                ),
+            )
+            if cog is not None:
+                return cog
+
             # ── Multi-step form: fill every step, then advance, until we can
             #    submit. LinkedIn blocks Next/Submit while required fields are
             #    empty, so we auto-answer each step and detect a stuck step
