@@ -90,7 +90,13 @@ class ResumeParser:
     
     def _parse_resume(self) -> Dict:
         """Parse extracted text to identify key information."""
+        name = self._extract_name()
+        first_name, last_name = self._split_name(name)
         data = {
+            'name': name,
+            'first_name': first_name,
+            'last_name': last_name,
+            'location': self._extract_location(),
             'email': self._extract_email(),
             'phone': self._extract_phone(),
             'linkedin': self._extract_linkedin(),
@@ -101,6 +107,78 @@ class ResumeParser:
             'raw_text': self.text
         }
         return data
+
+    def _extract_name(self) -> Optional[str]:
+        """Extract the candidate's full name (usually the first line of a resume).
+
+        Heuristic: the name is the first non-empty line that looks like a name —
+        1–4 alphabetic words, no email/URL/digits, and not a section header.
+        """
+        section_words = {
+            'resume', 'curriculum', 'vitae', 'cv', 'profile', 'summary',
+            'professional', 'contact', 'objective', 'experience', 'education',
+            'skills', 'projects', 'certificates', 'work',
+        }
+        for line in self.text.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            low = line.lower()
+            if '@' in line or 'http' in low or any(ch.isdigit() for ch in line):
+                continue
+            words = line.split()
+            if not (1 <= len(words) <= 4):
+                continue
+            if any(w in low for w in section_words):
+                continue
+            # Every token must be alphabetic (allow . - ' for initials/hyphens).
+            if not all(re.fullmatch(r"[A-Za-z.\-']+", w) for w in words):
+                continue
+            return line.title()
+        return None
+
+    @staticmethod
+    def _split_name(name: Optional[str]) -> tuple:
+        """Split a full name into (first_name, last_name)."""
+        if not name:
+            return None, None
+        parts = name.split()
+        if len(parts) == 1:
+            return parts[0], ''
+        return parts[0], ' '.join(parts[1:])
+
+    # Major Indian cities (this agent targets Indian portals) plus a few common
+    # global tech hubs — used to recover a location when there's no explicit
+    # "Location:" line. Ordered roughly by frequency for first-match wins.
+    _KNOWN_CITIES = [
+        'Bangalore', 'Bengaluru', 'Hyderabad', 'Pune', 'Mumbai', 'Delhi',
+        'New Delhi', 'Gurgaon', 'Gurugram', 'Noida', 'Chennai', 'Kolkata',
+        'Ahmedabad', 'Tirupati', 'Coimbatore', 'Kochi', 'Cochin', 'Trivandrum',
+        'Thiruvananthapuram', 'Visakhapatnam', 'Vijayawada', 'Nagpur', 'Indore',
+        'Jaipur', 'Lucknow', 'Chandigarh', 'Bhubaneswar', 'Mysore', 'Mysuru',
+        'Vellore', 'Madurai', 'Nashik', 'Surat', 'Remote',
+    ]
+
+    def _extract_location(self) -> Optional[str]:
+        """Best-effort current location / city from the resume text.
+
+        Priority: an explicit "Location/Address/Based in: <city>" line, then a
+        scan for a known city name. Returns None when nothing is found (callers
+        fall back to preferences)."""
+        explicit = re.search(
+            r'(?:location|address|based\s+in|city|current\s+location)\s*[:\-]\s*'
+            r'([A-Za-z][A-Za-z .\-]{1,40})',
+            self.text, re.IGNORECASE,
+        )
+        if explicit:
+            city = explicit.group(1).split(',')[0].strip(' .-')
+            if 2 <= len(city) <= 30:
+                return city.title()
+
+        for city in self._KNOWN_CITIES:
+            if re.search(r'\b' + re.escape(city) + r'\b', self.text, re.IGNORECASE):
+                return city
+        return None
     
     def _extract_email(self) -> Optional[str]:
         """Extract email address from resume text."""
@@ -165,30 +243,67 @@ class ResumeParser:
         return list(set(found_skills))
     
     def _estimate_experience(self) -> Optional[int]:
-        """Estimate years of experience from resume."""
-        # Look for experience section
-        experience_patterns = [
+        """Estimate years of *professional* experience from the resume.
+
+        Order of trust:
+          1. An explicit "X years of experience" statement.
+          2. Student / intern / fresher signals → 0–1 years (an ongoing degree or
+             internship must NOT be counted as multi-year experience).
+          3. Date ranges found in the work-experience section only — education
+             year ranges (e.g. a 2023–2027 degree) would otherwise inflate this.
+        """
+        text = self.text
+        low = text.lower()
+
+        # 1) Explicit statement wins.
+        for pattern in (
             r'(\d+)\+?\s*years?\s+(?:of\s+)?experience',
             r'experience\s*:?\s*(\d+)\+?\s*years?',
-        ]
-        
-        for pattern in experience_patterns:
-            match = re.search(pattern, self.text, re.IGNORECASE)
+        ):
+            match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 return int(match.group(1))
-        
-        # Try to estimate from date ranges in experience section
-        year_pattern = r'\b(20\d{2}|19\d{2})\b'
-        years = re.findall(year_pattern, self.text)
+
+        # 2) Early-career signals → cap at 0–1 years.
+        #    An education end-year in the future means the degree is still ongoing
+        #    (a current student), which is the clearest "not yet experienced" tell.
+        future_grad = re.search(
+            r'\((?:19|20)\d{2}\s*[-–—to]+\s*((?:19|20)\d{2})\)', text
+        )
+        ongoing_degree = bool(future_grad and int(future_grad.group(1)) > 2026)
+        student_signals = (
+            'fresher', 'pursuing', 'currently studying', 'currently pursuing',
+            'expected graduation', 'expected to graduate', 'final year',
+            'b.tech (', 'undergraduate',
+        )
+        has_intern = 'intern' in low  # covers intern / internship / interning
+        if ongoing_degree or any(s in low for s in student_signals) or has_intern:
+            # An internship counts as ~1 year of hands-on; a pure student → 0.
+            return 1 if has_intern else 0
+
+        # 3) Estimate from professional date ranges only.
+        work_text = self._work_experience_section() or text
+        years = [int(y) for y in re.findall(r'\b((?:19|20)\d{2})\b', work_text)]
         if years:
-            years = [int(y) for y in years]
-            min_year = min(years)
-            current_year = 2026  # As per context
-            estimated_exp = current_year - min_year
-            if 0 < estimated_exp < 50:  # Sanity check
+            estimated_exp = 2026 - min(years)  # current year per project context
+            if 0 < estimated_exp < 50:  # sanity check
                 return estimated_exp
-        
+
         return None
+
+    def _work_experience_section(self) -> Optional[str]:
+        """Return just the work/professional experience block of the resume.
+
+        Used so date-range based experience estimation ignores education and
+        project years. Returns None when no recognisable section header exists.
+        """
+        match = re.search(
+            r'(?:work\s+experience|professional\s+experience|employment\s+history'
+            r'|experience)\s*[:\n]\s*(.*?)'
+            r'(?:\n\s*(?:project|education|certificat|skills|achievement|award)|\Z)',
+            self.text, re.IGNORECASE | re.DOTALL,
+        )
+        return match.group(1) if match else None
     
     def _extract_education(self) -> List[str]:
         """Extract education information."""

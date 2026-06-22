@@ -129,8 +129,10 @@ class CutshortPortal(BasePortal):
         jobs = []
         
         try:
-            # Build search URL
-            roles = self.user_preferences.get('roles', ['Software Engineer'])
+            # Build search URL — roles are nested under `preferences` (the
+            # orchestrator merges the dashboard's roles there, not at the top level).
+            roles = (self.user_preferences.get('preferences', {}) or {}).get('roles') \
+                or self.user_preferences.get('roles') or ['Software Engineer']
             main_role = roles[0] if roles else 'Software Engineer'
             
             # Cutshort uses job role slugs in URL
@@ -335,35 +337,66 @@ class CutshortPortal(BasePortal):
                 return False
             
             await asyncio.sleep(2)
-            
-            # Handle any application form/popup
-            # Check for confirmation or form submission
-            page_text = await self.browser.get_page().content()
-            if 'success' in page_text.lower() or 'submitted' in page_text.lower() or 'applied' in page_text.lower():
-                self.logger.info(f"✅ Successfully applied to: {job['role']} at {job['company']}")
-                return True
-            
-            # Look for submit button if there's a form
-            submit_selectors = [
-                'button[type="submit"]',
-                'button:has-text("Submit")',
-                'button:has-text("Send")',
-                '.submit-button'
-            ]
-            
-            for selector in submit_selectors:
+            page = self.browser.get_page()
+
+            # ── Cognitive (LLM-first) completion ──────────────────────────────
+            # Hand the open application to the Claude reasoning loop first; it
+            # completes arbitrary multi-step / screening layouts generically.
+            # None → engine unavailable, fall through to the rule-based filler.
+            cog = await self._complete_application_cognitively(
+                page, job,
+                context_hint=(
+                    "The Cutshort application form / modal may now be open for this "
+                    "job. Complete every step from the profile and submit."
+                ),
+            )
+            if cog is not None:
+                return cog
+
+            # Cutshort may open an application form / modal with screening
+            # questions after Apply. Auto-fill and advance it generically with the
+            # shared multi-step form-filler (same engine Naukri / Instahyre use).
+            await self._complete_followup_modal(
+                page,
+                container_selectors=[
+                    '[role="dialog"]', '.modal', '.modal-content', 'form',
+                    'div[class*="apply"]', 'div[class*="application"]',
+                    'div[class*="question"]', '.ReactModal__Content',
+                ],
+                advance_selectors=[
+                    'button:has-text("Submit")', 'button:has-text("Send")',
+                    'button:has-text("Continue")', 'button:has-text("Next")',
+                    'button:has-text("Apply")', 'button[type="submit"]',
+                ],
+                success_selectors=[
+                    'text=Application sent', 'text=Successfully applied',
+                    'text=Applied', 'text=Submitted',
+                ],
+                job=job,
+            )
+
+            # Honest confirmation: only count it as applied when the page actually
+            # shows a success / applied marker (never on a bare keyword guess).
+            await asyncio.sleep(2)
+            confirmed = False
+            for sel in ('text=Application sent', 'text=Successfully applied',
+                        'text=Applied', 'text=Submitted',
+                        '[class*="applied"]', '[class*="success"]'):
                 try:
-                    if await self.browser.wait_for_selector(selector, timeout=3000):
-                        await self.browser.click(selector)
-                        await asyncio.sleep(2)
-                        self.logger.info(f"✅ Application submitted for: {job['role']} at {job['company']}")
-                        return True
-                except:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        confirmed = True
+                        break
+                except Exception:
                     continue
-            
-            # If we got here, we clicked apply but couldn't confirm
-            self.logger.warning(f"⚠️  Clicked apply but couldn't confirm for: {job['role']}")
-            return False
+
+            if confirmed:
+                self.logger.info(
+                    f"✅ Successfully applied to: {job['role']} at {job.get('company','')}"
+                )
+            else:
+                self.logger.warning(f"⚠️  Clicked apply but couldn't confirm for: {job['role']}")
+            return confirmed
             
         except Exception as e:
             self.logger.error(f"Error applying to job: {e}")

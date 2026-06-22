@@ -501,7 +501,8 @@ class BasePortal(ABC):
             'name': ctx['name'],
             'email': ctx['email'],
             'phone': ctx['phone'],
-            'location': profile.get('location') or (locations[0] if locations else None),
+            'location': ctx['location'] or profile.get('current_location')
+            or profile.get('location') or (locations[0] if locations else None),
             'years_of_experience': ctx['years'],
             'skills': self.resume_data.get('skills', []),
             'current_company': self.resume_data.get('current_company'),
@@ -688,11 +689,35 @@ class BasePortal(ABC):
             years = int(float(raw_years))
         except (TypeError, ValueError):
             years = 0
+
+        # Location: explicit profile value wins, then the resume, then the first
+        # concrete preferred location (e.g. "Remote"). The yaml key is
+        # ``current_location``; also accept ``location`` for forward-compat.
+        pref_locations = [str(l).strip() for l in (p.get('locations') or []) if str(l).strip()]
+        location = (
+            profile.get('current_location') or profile.get('location')
+            or self.resume_data.get('location')
+            or (pref_locations[0] if pref_locations else '')
+        )
+
+        name = profile.get('name') or self.resume_data.get('name') or ''
+        first_name = (
+            profile.get('first_name') or self.resume_data.get('first_name')
+            or (name.split()[0] if name else '')
+        )
+        last_name = (
+            profile.get('last_name') or self.resume_data.get('last_name')
+            or (' '.join(name.split()[1:]) if len(name.split()) > 1 else '')
+        )
+
         return {
             'common_answers': common,
             'phone': profile.get('phone') or self.resume_data.get('phone') or '',
             'email': profile.get('email') or self.resume_data.get('email') or '',
-            'name': profile.get('name') or self.resume_data.get('name') or '',
+            'name': name,
+            'first_name': first_name,
+            'last_name': last_name,
+            'location': location,
             'years': years,
             'expected_ctc': str(common.get('expected_ctc') or ''),
             'notice': str(common.get('notice_period') or '30 days'),
@@ -718,6 +743,20 @@ class BasePortal(ABC):
             return ctx['phone']
         if 'email' in l:
             return ctx['email']
+        # Identity fields — must be matched BEFORE the generic fallback so a
+        # name/location field never receives the catch-all interest sentence.
+        if 'first name' in l or 'given name' in l:
+            return ctx['first_name'] or ctx['name']
+        if 'last name' in l or 'surname' in l or 'family name' in l:
+            return ctx['last_name'] or ctx['name']
+        if 'full name' in l or l.strip() in ('name', 'name*') or l.endswith(' name'):
+            return ctx['name']
+        # Location / city — the field that previously got "Yes, I am interested…".
+        if any(k in l for k in (
+            'location', 'city', 'where are you', 'reside', 'based in',
+            'hometown', 'home town', 'current town', 'place',
+        )):
+            return ctx['location']
         if numeric:
             if any(k in l for k in ('salary', 'ctc', 'compensation', 'pay', 'package')):
                 return self._digits(ctx['expected_ctc']) or '0'
@@ -728,10 +767,17 @@ class BasePortal(ABC):
         if 'relocat' in l:
             return 'Yes'
         # Fall back to the rule-based answerer (CTC / notice / why / default).
+        # Pass identity/location context so it can answer those too if reached.
         try:
-            return self.llm.answer_question(label, {'common_answers': ctx['common_answers']})
+            return self.llm.answer_question(label, {
+                'common_answers': ctx['common_answers'],
+                'location': ctx['location'],
+                'name': ctx['name'],
+                'first_name': ctx['first_name'],
+                'last_name': ctx['last_name'],
+            })
         except Exception:
-            return 'Yes'
+            return ''
 
     def _save_answer(self, job, label, answer):
         """Persist one screening answer (best-effort; never breaks the apply)."""

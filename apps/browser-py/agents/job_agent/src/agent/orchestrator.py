@@ -86,10 +86,16 @@ class JobAgentOrchestrator:
         profile = self.user_preferences.setdefault('user_profile', {})
         if not profile.get('name') and self.resume_data.get('name'):
             profile['name'] = self.resume_data['name']
+        if not profile.get('first_name') and self.resume_data.get('first_name'):
+            profile['first_name'] = self.resume_data['first_name']
+        if not profile.get('last_name') and self.resume_data.get('last_name'):
+            profile['last_name'] = self.resume_data['last_name']
         if not profile.get('email') and self.resume_data.get('email'):
             profile['email'] = self.resume_data['email']
         if not profile.get('phone') and self.resume_data.get('phone'):
             profile['phone'] = self.resume_data['phone']
+        if not profile.get('current_location') and self.resume_data.get('location'):
+            profile['current_location'] = self.resume_data['location']
 
         display_name = profile.get('name') or self.resume_data.get('email') or 'User'
         self.logger.info(f"📄 Resume loaded: {resume_file}")

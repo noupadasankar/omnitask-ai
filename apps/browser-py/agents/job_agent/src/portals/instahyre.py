@@ -480,6 +480,24 @@ class InstahyrePortal(BasePortal):
 
             await asyncio.sleep(3)
 
+            # ── Cognitive (LLM-first) completion ──────────────────────────────
+            # Let the Claude reasoning loop complete any follow-up questions in the
+            # popup generically. None → engine unavailable; fall through to rules.
+            cog = await self._complete_application_cognitively(
+                page, job,
+                context_hint=(
+                    "The Instahyre application popup is open for this job. Complete "
+                    "any follow-up questions from the profile and submit."
+                ),
+            )
+            if cog is not None:
+                try:
+                    await page.keyboard.press('Escape')
+                    await asyncio.sleep(1)
+                except Exception:
+                    pass
+                return cog
+
             # Some Instahyre roles show a follow-up form / questions in the popup
             # before the application is confirmed. Auto-answer it with the shared
             # form-filler (no-op when apply is a single click).

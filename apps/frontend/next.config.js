@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
 
+  // three.js ships its add-ons (EffectComposer, UnrealBloomPass, …) as ESM
+  // under three/examples — transpile so Next can bundle them.
+  transpilePackages: ['three'],
+
   eslint: {
     ignoreDuringBuilds: true,
   },

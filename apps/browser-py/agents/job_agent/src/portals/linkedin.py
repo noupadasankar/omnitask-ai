@@ -4,12 +4,53 @@ LinkedIn Portal Implementation with Easy Apply
 
 from typing import Dict, List
 import asyncio
+from urllib.parse import quote_plus
 from .base_portal import BasePortal
 
 
 class LinkedInPortal(BasePortal):
     """LinkedIn job portal implementation with Easy Apply workflow."""
-    
+
+    # Generic Easy-Apply collection — used only when the user gave no role.
+    _EASY_APPLY_COLLECTION = "https://www.linkedin.com/jobs/collections/easy-apply/"
+
+    def _build_search_url(self) -> str:
+        """Build a role-based LinkedIn Easy-Apply search URL from preferences.
+
+        Uses the user's entered roles as the search keywords and `f_AL=true` so
+        only Easy-Apply postings come back (the only kind this agent can submit).
+        Remote / Hybrid / On-site preferences map to LinkedIn's work-type filter
+        (f_WT 2/3/1); the first concrete city becomes the geographic location.
+        Falls back to the generic Easy-Apply collection when no role is set.
+        """
+        prefs = (self.user_preferences or {}).get('preferences', {}) or {}
+        roles = [str(r).strip() for r in (prefs.get('roles') or []) if str(r).strip()]
+        locations = [str(l).strip() for l in (prefs.get('locations') or []) if str(l).strip()]
+        if not roles:
+            return self._EASY_APPLY_COLLECTION
+
+        keywords = " OR ".join(roles) if len(roles) > 1 else roles[0]
+        params = [f"keywords={quote_plus(keywords)}", "f_AL=true"]
+
+        work_types, geo = [], ""
+        for loc in locations:
+            ll = loc.lower()
+            if any(k in ll for k in ('remote', 'work from home', 'wfh')):
+                work_types.append('2')
+            elif 'hybrid' in ll:
+                work_types.append('3')
+            elif any(k in ll for k in ('on-site', 'onsite', 'in office', 'in-office')):
+                work_types.append('1')
+            elif not geo:
+                geo = loc
+        if work_types:
+            params.append("f_WT=" + ",".join(sorted(set(work_types))))
+        if geo:
+            params.append(f"location={quote_plus(geo)}")
+
+        return "https://www.linkedin.com/jobs/search/?" + "&".join(params)
+
+
     async def verify_login(self) -> bool:
         """Check if user is logged in to LinkedIn."""
         try:
@@ -107,12 +148,18 @@ class LinkedInPortal(BasePortal):
         - Skip jobs showing "Applied X days ago"
         - Get only jobs with "Easy Apply" button
         """
+        # Role-based Easy-Apply search URL (keywords = the user's roles). Stored so
+        # apply_to_job can return to the SAME role-filtered results, not a generic
+        # collection.
+        search_url = self._build_search_url()
+        self._search_url = search_url
+
         # ── Cognitive (LLM-first) universal search ────────────────────────────
         # When the local engine is up, discover postings by observation+reasoning
         # (no LinkedIn-specific selectors). Falls through to the hardcoded scrape
         # below when the engine is unavailable or finds nothing.
         cog_jobs = await self._search_jobs_cognitively(
-            start_url="https://www.linkedin.com/jobs/collections/easy-apply/",
+            start_url=search_url,
             max_jobs=30,
         )
         if cog_jobs:
@@ -122,9 +169,6 @@ class LinkedInPortal(BasePortal):
         jobs = []
 
         try:
-            # Go to Easy Apply jobs collection
-            search_url = "https://www.linkedin.com/jobs/collections/easy-apply/"
-            
             self.logger.info(f"Searching LinkedIn Easy Apply jobs: {search_url}")
             await self.browser.goto(search_url)
             await asyncio.sleep(5)
@@ -256,11 +300,13 @@ class LinkedInPortal(BasePortal):
             
             self.logger.info(f"Processing LinkedIn job card #{card_index}: {job['role']}")
             
-            # Make sure we're on Easy Apply page
+            # Make sure we're on a LinkedIn jobs listing — return to the SAME
+            # role-filtered search results (not a generic collection) if we drifted.
             current_url = await self.browser.get_url()
-            if 'easy-apply' not in current_url:
-                self.logger.info("Navigating to LinkedIn Easy Apply page...")
-                await self.browser.goto("https://www.linkedin.com/jobs/collections/easy-apply/")
+            if '/jobs/' not in current_url:
+                target = getattr(self, '_search_url', None) or self._EASY_APPLY_COLLECTION
+                self.logger.info("Navigating back to LinkedIn job search results...")
+                await self.browser.goto(target)
                 await asyncio.sleep(3)
             
             # Re-fetch job cards

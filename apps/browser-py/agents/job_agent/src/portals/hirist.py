@@ -4,12 +4,29 @@ Hirist Portal Implementation
 
 from typing import Dict, List
 import asyncio
+import re
 from .base_portal import BasePortal
 
 
 class HiristPortal(BasePortal):
     """Hirist.tech job portal implementation."""
-    
+
+    def _build_search_url(self) -> str:
+        """Build a role-based Hirist search URL from the user's entered roles.
+
+        Hirist keyword searches use the `/k/<slug>-jobs` path (e.g.
+        `/k/nodejs-jobs`, `/k/frontend-developer-jobs`). Falls back to a general
+        software-developer feed when no role is configured (NOT the old hardcoded
+        AI/ML category, which mismatched non-AI users)."""
+        prefs = (self.user_preferences or {}).get('preferences', {}) or {}
+        roles = [str(r).strip() for r in (prefs.get('roles') or []) if str(r).strip()]
+        if not roles:
+            return "https://www.hirist.tech/k/software-developer-jobs?ref=topnavigation"
+        slug = re.sub(r'[^a-z0-9]+', '-', roles[0].lower()).strip('-')
+        slug = re.sub(r'-?jobs?$', '', slug).strip('-') or 'software-developer'
+        return f"https://www.hirist.tech/k/{slug}-jobs?ref=topnavigation"
+
+
     async def verify_login(self) -> bool:
         """Check if user is logged in to Hirist."""
         try:
@@ -124,9 +141,9 @@ class HiristPortal(BasePortal):
         jobs = []
         
         try:
-            # Use AI/ML specific job feed
-            search_url = "https://www.hirist.tech/c/ai-ml-jobs?ref=topnavigation"
-            
+            # Role-based keyword search built from the user's entered roles.
+            search_url = self._build_search_url()
+
             self.logger.info(f"Searching Hirist: {search_url}")
             await self.browser.goto(search_url)
             await asyncio.sleep(4)
@@ -327,7 +344,43 @@ class HiristPortal(BasePortal):
                     return False
             
             await asyncio.sleep(4)
-            
+
+            # ── Cognitive (LLM-first) completion ──────────────────────────────
+            # Hand the open application to the Claude reasoning loop first; it
+            # completes arbitrary multi-step / screening layouts generically.
+            # None → engine unavailable, fall through to the rule-based filler.
+            cog = await self._complete_application_cognitively(
+                page, job,
+                context_hint=(
+                    "The Hirist application form / questionnaire may now be open for "
+                    "this job. Complete every step from the profile and submit."
+                ),
+            )
+            if cog is not None:
+                return cog
+
+            # Hirist frequently opens a multi-step application form / questionnaire
+            # after Apply (screening questions, cover note). Auto-fill and advance
+            # it with the shared form-filler instead of leaving it for the user.
+            await self._complete_followup_modal(
+                page,
+                container_selectors=[
+                    '[role="dialog"]', '.modal', '.modal-content', 'form',
+                    'div[class*="apply"]', 'div[class*="application"]',
+                    'div[class*="question"]',
+                ],
+                advance_selectors=[
+                    'button:has-text("Submit")', 'button:has-text("Continue")',
+                    'button:has-text("Next")', 'button:has-text("Save")',
+                    'button:has-text("Apply")', 'button[type="submit"]',
+                ],
+                success_selectors=[
+                    'text=Applied', 'text=Successfully Applied',
+                    'text=Application Submitted', 'text=Thank you',
+                ],
+                job=job,
+            )
+
             # Look for immediate confirmation indicators
             success_indicators = [
                 'text=Applied',
@@ -338,7 +391,7 @@ class HiristPortal(BasePortal):
                 'text=Thank you',
                 'text=Successfully Applied',
             ]
-            
+
             immediate_confirmation = False
             for selector in success_indicators:
                 try:
@@ -349,12 +402,6 @@ class HiristPortal(BasePortal):
                         break
                 except:
                     continue
-            
-            # Check if a form appeared (might need to fill it)
-            if not immediate_confirmation:
-                form = await page.query_selector('form')
-                if form:
-                    self.logger.info("📝 Application form appeared - might need manual completion")
             
             # ALWAYS VERIFY: Wait 5 seconds and check button state (TRUSTWORTHY CHECK)
             self.logger.info("⏳ Verifying application - waiting 5 seconds...")

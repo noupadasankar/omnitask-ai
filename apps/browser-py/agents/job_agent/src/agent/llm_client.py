@@ -159,10 +159,11 @@ class LLMClient:
         }
     
     def _check_role_match(self, job_title: str, preferred_roles: List[str]) -> bool:
-        """Check if job title matches preferred roles.
-        
-        Uses VERY flexible matching for AI/ML roles - if job title contains
-        AI/ML keywords, it's a match!
+        """Check if a job title matches the user's entered roles.
+
+        Matches strictly against the roles the USER asked for — no hardcoded
+        domain bias. (This previously force-matched any AI/ML title regardless of
+        the user's role, which made e.g. a Frontend Developer apply to AI jobs.)
         """
         if not job_title:
             return False
@@ -173,24 +174,10 @@ class LLMClient:
             return True
 
         job_title_lower = job_title.lower()
-        
+
         # Debug: log what we're matching
         log.debug("Matching job title: '%s'", job_title)
         log.debug("Against %d roles", len(preferred_roles))
-        
-        # Super lenient AI/ML keyword matching - if ANY of these appear, it's a match!
-        ai_ml_keywords = [
-            'machine learning', 'ml ', ' ml', 'artificial intelligence', 'ai ',
-            'deep learning', 'dl ', 'data scientist', 'data science',
-            'computer vision', 'cv ', 'nlp', 'natural language',
-            'generative ai', 'gen ai', 'genai', 'llm', 'large language',
-            'neural network', 'tensorflow', 'pytorch', 'model', 'algorithm'
-        ]
-        
-        for keyword in ai_ml_keywords:
-            if keyword in job_title_lower:
-                log.debug("AI/ML keyword match: '%s' found in '%s'", keyword, job_title)
-                return True
 
         # First try exact substring match (most accurate)
         for role in preferred_roles:
@@ -199,15 +186,24 @@ class LLMClient:
                 log.debug("Exact match: '%s' matched '%s'", role, job_title)
                 return True
         
-        # Then try keyword-based matching (more flexible)
-        common_words = {'the', 'a', 'an', 'and', 'or', 'of', 'for', 'in', 'on', 'at', 'to', 'senior', 'junior', 'lead', 'staff'}
-        
+        # Then try keyword-based matching on the role's DISTINCTIVE words. Generic
+        # words ("developer", "engineer", …) are excluded so a "Frontend Developer"
+        # search doesn't match every "<X> Developer" title; if a role has only
+        # generic words (e.g. just "Developer"), we fall back to matching on those.
+        common_words = {
+            'the', 'a', 'an', 'and', 'or', 'of', 'for', 'in', 'on', 'at', 'to',
+            'senior', 'junior', 'lead', 'staff', 'principal', 'sr', 'jr',
+            'developer', 'engineer', 'software', 'specialist', 'consultant',
+            'analyst', 'associate', 'executive', 'professional', 'role',
+        }
+
         for role in preferred_roles:
-            role_keywords = [w for w in role.lower().split() if w not in common_words]
-            # Match if at least 1 significant keyword matches (very lenient!)
+            distinctive = [w for w in role.lower().split() if w not in common_words]
+            role_keywords = distinctive or role.lower().split()
+            # Match if at least 1 distinctive keyword appears in the title.
             matched_keywords = sum(1 for keyword in role_keywords if keyword in job_title_lower)
-            
-            if matched_keywords >= 1:  # Just need ONE keyword to match
+
+            if matched_keywords >= 1:
                 log.debug("Keyword match: '%s' matched '%s' (%d keywords)", role, job_title, matched_keywords)
                 return True
 
@@ -287,26 +283,45 @@ class LLMClient:
         # TODO: Use LLM for better answers
         
         question_lower = question.lower()
-        
+
+        # Identity / location — answer from the supplied profile context. Matched
+        # first so a short labelled field never receives the catch-all sentence.
+        if 'first name' in question_lower or 'given name' in question_lower:
+            return context.get('first_name') or context.get('name') or ''
+        if any(k in question_lower for k in ('last name', 'surname', 'family name')):
+            return context.get('last_name') or context.get('name') or ''
+        if 'full name' in question_lower or question_lower.strip().rstrip('*') == 'name':
+            return context.get('name') or ''
+        if any(k in question_lower for k in ('location', 'city', 'reside', 'based in', 'hometown')):
+            return context.get('location') or ''
+
         # Common patterns
         if 'ctc' in question_lower or 'salary' in question_lower:
             if 'current' in question_lower:
                 return context.get('common_answers', {}).get('current_ctc', '12 LPA')
             elif 'expected' in question_lower:
                 return context.get('common_answers', {}).get('expected_ctc', '18 LPA')
-        
+
         if 'notice' in question_lower:
             return context.get('common_answers', {}).get('notice_period', '30 days')
-        
+
         if 'relocate' in question_lower:
             return context.get('common_answers', {}).get('willing_to_relocate', 'Yes')
-        
+
         if 'why' in question_lower and ('change' in question_lower or 'looking' in question_lower):
-            return context.get('common_answers', {}).get('reason_for_change', 
+            return context.get('common_answers', {}).get('reason_for_change',
                 'Looking for better opportunities to grow and work with latest technologies')
-        
-        # Default response
-        return "Yes, I am interested in this opportunity."
+
+        # Open-ended / descriptive prompts → a generic interest statement is fine.
+        # Anything else is almost certainly a short labelled field, where dumping a
+        # sentence breaks validation (e.g. a city field) — return empty instead.
+        open_ended = '?' in question or any(k in question_lower for k in (
+            'why', 'describe', 'tell us', 'explain', 'cover letter', 'about you',
+            'summary', 'motivation', 'interest', 'comment', 'message',
+        ))
+        if open_ended:
+            return "Yes, I am interested in this opportunity."
+        return ""
     
     def extract_job_details(self, job_card_html: str) -> Dict[str, str]:
         """Extract structured information from job card HTML.

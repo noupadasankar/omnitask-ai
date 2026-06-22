@@ -474,6 +474,24 @@ class NaukriPortal(BasePortal):
             self.logger.info("⏳ Waiting for confirmation page...")
             await asyncio.sleep(5)
 
+            # ── Cognitive (LLM-first) completion ──────────────────────────────
+            # Hand the open application (its chatbot/questionnaire) to the Claude
+            # reasoning loop, which answers arbitrary screening questions by meaning.
+            # Returns True (submitted) / False (principled skip); None → engine
+            # unavailable, fall through to the rule-based form-filler below.
+            cog = await self._complete_application_cognitively(
+                page, job,
+                context_hint=(
+                    "The Naukri application has been initiated for this job. A "
+                    "follow-up questionnaire (the chatbot drawer or a modal) may be "
+                    "open — answer every question from the profile and submit."
+                ),
+            )
+            if cog is not None:
+                await self.browser.goto("https://www.naukri.com/mnjuser/recommendedjobs")
+                await asyncio.sleep(2)
+                return cog
+
             # Many Naukri jobs open a follow-up questionnaire (the "chatbot"
             # drawer or a modal) that must be answered before the application is
             # recorded. Auto-answer it with the shared form-filler.

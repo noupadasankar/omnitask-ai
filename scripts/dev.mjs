@@ -13,6 +13,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const isWin = process.platform === "win32";
@@ -33,14 +34,40 @@ else {
   process.exit(1);
 }
 
-// Pick a python interpreter.
-let py;
-for (const candidate of ["python", "python3", "py"]) {
-  if (probe(candidate, ["--version"])) { py = candidate; break; }
-}
-if (!py) {
-  console.error("ERROR: python not found on PATH.");
-  process.exit(1);
+// Pick a python interpreter that actually HAS the browser-py deps (playwright +
+// redis) — not just any python on PATH. On Windows the bare name "python" (run
+// through the shell) often resolves to the Microsoft Store stub or a second
+// interpreter without the deps, which makes the engine crash on startup. Prefer
+// an explicit override, then the repo's .venv, then the usual names.
+//
+// The dep-probe uses shell:false + a full executable path so the `-c "..."`
+// argument isn't mangled by the Windows shell's arg-splitting.
+const pyDepsOK = (exe, extra = []) => {
+  try {
+    return spawnSync(exe, [...extra, "-c", "import playwright, redis"],
+                     { cwd: repoRoot, stdio: "ignore" }).status === 0;
+  } catch {
+    return false;
+  }
+};
+
+const venvPy = isWin
+  ? join(repoRoot, ".venv", "Scripts", "python.exe")
+  : join(repoRoot, ".venv", "bin", "python");
+
+let py = null;
+let pyArgs = [];
+if (process.env.BROWSER_PY_PYTHON && pyDepsOK(process.env.BROWSER_PY_PYTHON)) {
+  py = process.env.BROWSER_PY_PYTHON;                       // explicit override
+} else if (existsSync(venvPy) && pyDepsOK(venvPy)) {
+  py = venvPy;                                              // repo virtualenv (preferred)
+} else {
+  // Fall back to a python on PATH. Existence is enough here: if it turns out to
+  // lack the deps and crashes, the engine is launched as OPTIONAL below, so the
+  // dashboard keeps running instead of the whole stack going down.
+  for (const [cmd, args] of [["python", []], ["python3", []], ["py", ["-3"]]]) {
+    if (probe(cmd, [...args, "--version"])) { py = cmd; pyArgs = args; break; }
+  }
 }
 
 console.log("▶ Starting infra (Postgres + Redis)...");
@@ -58,11 +85,30 @@ console.log("▶ Launching backend + frontend + worker (turbo) and the Python en
 console.log("  (Ctrl-C stops everything)");
 
 const children = [];
-const start = (cmd, args) => {
+const start = (cmd, args, opts = {}) => {
   const child = run(cmd, args);
   children.push(child);
+  child.on("error", (err) => {
+    if (opts.optional) {
+      console.warn(`⚠ Could not start ${opts.name || cmd}: ${err.message}. Continuing without it.`);
+      return;
+    }
+    console.error(`Failed to start ${cmd}: ${err.message}`);
+    shutdown(1);
+  });
   child.on("exit", (code) => {
-    // If any process exits, tear the whole stack down.
+    if (opts.optional) {
+      // The browser engine is OPTIONAL: if it dies, keep the dashboard +
+      // backend running instead of tearing the whole stack down. (Live browser
+      // execution is unavailable until it's restarted, but the UI stays up.)
+      console.warn(
+        `⚠ ${opts.name || cmd} exited (code ${code}). The dashboard keeps running; ` +
+        `live browser execution is OFF until you restart the stack.`
+      );
+      return;
+    }
+    // A core process (turbo dev = backend + frontend + worker) exiting tears the
+    // whole stack down.
     shutdown(code ?? 0);
   });
   return child;
@@ -84,4 +130,14 @@ process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
 start("pnpm", ["dev"]);
-start(py, ["apps/browser-py/main.py"]);
+if (py) {
+  start(py, [...pyArgs, "apps/browser-py/main.py"], {
+    optional: true,
+    name: "browser-py engine",
+  });
+} else {
+  console.warn("⚠ No Python with the browser-py deps (playwright, redis) was found.");
+  console.warn("  The dashboard + backend will run; live browser execution is OFF.");
+  console.warn("  Fix: pip install -r apps/browser-py/requirements.txt && python -m playwright install chromium");
+  console.warn("  (or set BROWSER_PY_PYTHON=/full/path/to/python.exe that has those deps)");
+}
