@@ -1,0 +1,1336 @@
+// Prisma schema — auto-synced via `prisma db push`
+// Post-deploy indexes (GIN, pgvector): run `npm run prisma:post-deploy` after push
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String?
+  name              String?
+  avatarUrl         String?
+  role              Role               @default(USER)
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  emailVerified     Boolean            @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  auditLogs         AuditLog[]
+  files             File[]
+  memories          Memory[]
+  notifications     Notification[]
+  oauthAccounts     OAuthAccount[]
+  schedules         Schedule[]
+  sessions          Session[]
+  skills            Skill[]
+  tasks             Task[]
+  preferences       UserPreferences?
+  quota             UserQuota?
+  executionSessions ExecutionSession[] @relation("userExecutionSessions")
+  agentMemories     AgentMemory[]      @relation("userAgentMemories")
+  socialPosts       SocialPost[]
+  travelBookings    TravelBooking[]
+  foodOrders        FoodOrder[]
+  subscription      Subscription?
+  invoices          Invoice[]
+  ownedTeams        Team[]         @relation("teamOwner")
+  teamMemberships   TeamMember[]
+  dataExports       DataExportRequest[]
+  dataDeletions     DataDeletionRequest[]
+
+  @@index([email])
+}
+
+model UserPreferences {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  theme             String    @default("dark")
+  defaultShadowMode Boolean   @default(true)
+  notifyOnComplete  Boolean   @default(true)
+  notifyOnApproval  Boolean   @default(true)
+  timezone          String    @default("UTC")
+  language          String    @default("en")
+  deletedAt         DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserQuota {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  plan             UserPlan  @default(FREE)
+  tasksPerDay      Int       @default(10)
+  tasksUsedToday   Int       @default(0)
+  storageBytes     BigInt    @default(536870912)
+  storageUsedBytes BigInt    @default(0)
+  concurrentTasks  Int       @default(2)
+  resetAt          DateTime
+  deletedAt        DateTime?
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  provider     String
+  providerUid  String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Task {
+  id                String             @id @default(cuid())
+  userId            String
+  title             String
+  naturalLanguage   String
+  status            TaskStatus         @default(QUEUED)
+  priority          Priority           @default(MEDIUM)
+  trigger           TaskTrigger        @default(MANUAL)
+  shadowMode        Boolean            @default(false)
+  riskScore         Float?
+  errorMessage      String?
+  result            Json?
+  context           Json?
+  agentType         String?
+  planHash          String?
+  parentTaskId      String?
+  scheduleId        String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  executions        Execution[]
+  executionSessions ExecutionSession[]
+  files             File[]
+  memories          Memory[]
+  plan              Plan?
+  parentTask        Task?              @relation("subtasks", fields: [parentTaskId], references: [id])
+  subTasks          Task[]             @relation("subtasks")
+  schedule          Schedule?          @relation(fields: [scheduleId], references: [id])
+  user              User               @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([planHash])
+}
+
+model Plan {
+  id         String   @id @default(cuid())
+  taskId     String   @unique
+  hash       String   @unique
+  rawOutput  String
+  steps      Json
+  validated  Boolean  @default(false)
+  repaired   Boolean  @default(false)
+  model      String
+  tokensUsed Int?
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Execution {
+  id            String          @id @default(cuid())
+  taskId        String
+  attemptNumber Int             @default(1)
+  status        ExecutionStatus @default(RUNNING)
+  graph         Json?
+  startedAt     DateTime        @default(now())
+  completedAt   DateTime?
+  durationMs    Int?
+  deletedAt     DateTime?
+  task          Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  steps         ExecutionStep[]
+
+  @@index([taskId])
+}
+
+model ExecutionStep {
+  id            String     @id @default(cuid())
+  executionId   String
+  stepIndex     Int
+  stepType      String
+  action        String
+  status        StepStatus @default(PENDING)
+  input         Json?
+  output        Json?
+  errorMessage  String?
+  screenshotKey String?
+  domSnapshot   String?
+  durationMs    Int?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  deletedAt     DateTime?
+  execution     Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, stepIndex])
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  taskId      String
+  userId      String
+  reason      String
+  context     Json?
+  status      ApprovalStatus @default(PENDING)
+  expiresAt   DateTime
+  respondedAt DateTime?
+  response    Json?
+  deletedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+}
+
+model Memory {
+  id          String     @id @default(cuid())
+  userId      String
+  taskId      String?
+  type        MemoryType
+  content     String
+  summary     String?
+  metadata    Json?
+  importance  Float      @default(0.5)
+  accessCount Int        @default(0)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  task        Task?      @relation(fields: [taskId], references: [id])
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, importance])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type, importance])
+}
+
+model Skill {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String
+  description  String
+  planTemplate Json
+  triggerCount Int       @default(0)
+  successRate  Float     @default(0)
+  version      Int       @default(1)
+  isPublic     Boolean   @default(false)
+  tags         String[]
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model File {
+  id         String   @id @default(cuid())
+  userId     String
+  taskId     String?
+  name       String
+  mimeType   String
+  sizeBytes  BigInt
+  storageKey String   @unique
+  bucketName String
+  checksum   String
+  metadata   Json?
+  tags       String[]
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  task       Task?    @relation(fields: [taskId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Schedule {
+  id             String    @id @default(cuid())
+  userId         String
+  name           String
+  cronExpression String
+  taskTemplate   Json
+  enabled        Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  runCount       Int       @default(0)
+  failCount      Int       @default(0)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([nextRunAt, enabled])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User?     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json?
+  readAt    DateTime?
+  deletedAt DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ─── Autonomous Browser Agent Models ──────────────────────────
+
+model AgentExecutionStep {
+  id             String           @id @default(cuid())
+  sessionId      String
+  session        ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex      Int
+  action         String
+  target         String?
+  value          String?
+  description    String
+  riskLevel      RiskLevel
+  status         StepStatusAgent  @default(PENDING)
+  result         Json?
+  screenshotUrl  String?
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  durationMs     Int?
+  retryCount     Int              @default(0)
+  visionAnalysis Json?
+  deletedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([sessionId, stepIndex])
+  @@index([sessionId])
+  @@index([status])
+  @@index([sessionId, status, stepIndex])
+}
+
+enum StepStatusAgent {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  WAITING_APPROVAL
+}
+
+model ExecutionSession {
+  id               String                 @id @default(cuid())
+  taskId           String
+  task             Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User                   @relation("userExecutionSessions", fields: [userId], references: [id], onDelete: Cascade)
+  status           ExecutionSessionStatus @default(PENDING)
+  plan             Json?
+  currentStepIndex Int                    @default(0)
+  totalSteps       Int                    @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  errorMessage     String?
+  metadata         Json?
+  deletedAt        DateTime?
+  steps            AgentExecutionStep[]
+  screenshots      Screenshot[]
+  approvalRequests ApprovalRequest[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status, createdAt(sort: Desc)])
+}
+
+enum ExecutionSessionStatus {
+  PENDING
+  PLANNING
+  RUNNING
+  PAUSED
+  WAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Screenshot {
+  id              String           @id @default(cuid())
+  sessionId       String
+  session         ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex       Int?
+  imageUrl        String
+  base64Thumbnail String?
+  width           Int
+  height          Int
+  timestamp       DateTime         @default(now())
+  metadata        Json?
+
+  @@index([sessionId])
+}
+
+model ApprovalRequest {
+  id            String           @id @default(cuid())
+  sessionId     String
+  session       ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex     Int
+  riskLevel     RiskLevel
+  description   String
+  actionDetails Json
+  screenshotUrl String?
+  status        ApprovalStatus   @default(PENDING)
+  respondedAt   DateTime?
+  respondedBy   String?
+  deletedAt     DateTime?
+  createdAt     DateTime         @default(now())
+  expiresAt     DateTime
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([sessionId, status, createdAt(sort: Desc)])
+}
+
+model AgentMemory {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation("userAgentMemories", fields: [userId], references: [id], onDelete: Cascade)
+  type           MemoryType
+  key            String
+  content        String
+  embedding      Float[]
+  importance     Float      @default(0.5)
+  accessCount    Int        @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+  metadata       Json?
+  deletedAt      DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([key])
+  @@index([userId, type, key])
+  @@index([userId, importance(sort: Desc)])
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+enum TeamMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  INCOMPLETE
+  TRIALING
+  UNPAID
+  EXPIRED
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum UserPlan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum TaskStatus {
+  QUEUED
+  PLANNING
+  PLANNED
+  AWAITING_APPROVAL
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  COMPENSATED
+  WAITING_APPROVAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum MemoryType {
+  EPISODIC
+  SEMANTIC
+  PROCEDURAL
+  WORKING
+}
+
+enum TaskTrigger {
+  MANUAL
+  SCHEDULED
+  SKILL
+  API
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  TASK_COMPLETE
+  TASK_FAILED
+  APPROVAL_REQUIRED
+  SYSTEM
+  BILLING
+}
+
+// ─── Autonomous Job Application Agent ──────────────────────────────────────────
+
+/// Per-user job-search preferences used by the rule-based match scorer.
+model JobPreference {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  roles             String[]  @default([])
+  locations         String[]  @default([])
+  requiredKeywords  String[]  @default([])
+  preferredKeywords String[]  @default([])
+  excludeKeywords   String[]  @default([])
+  skills            String[]  @default([])
+  minScore          Int       @default(60)
+  dailyLimit        Int       @default(20)
+  remoteOnly        Boolean   @default(false)
+  minSalary         Int?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, portal, externalJobId) — prevents re-applying to the same job.
+model JobApplication {
+  id            String               @id @default(cuid())
+  userId        String
+  portal        String
+  externalJobId String
+  title         String
+  company       String?
+  location      String?
+  url           String?
+  score         Int                  @default(0)
+  matchReasons  Json?
+  status        JobApplicationStatus @default(MATCHED)
+  sessionId     String?
+  errorMessage  String?
+  appliedAt     DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([userId, portal, externalJobId])
+  @@index([userId])
+  @@index([status])
+  @@index([sessionId])
+}
+
+enum JobApplicationStatus {
+  MATCHED
+  QUEUED
+  PROCESSING
+  SKIPPED
+  PENDING_APPROVAL
+  APPLIED
+  FAILED
+}
+
+// ─── Training Data Lake (trajectory logging — train later) ─────────────────────
+
+/// One reasoning step of a cognitive agent run, captured for offline training.
+/// Append-only: each row is a (state → decision) pair the local brain produced.
+/// The data accumulates now; fine-tuning consumes it later (no trainer yet).
+model TrajectoryStep {
+  id            String    @id @default(cuid())
+  sessionId     String
+  userId        String?
+  stepIndex     Int
+  goal          String?
+  domain        String?
+  url           String?
+  /// Compact observation the model saw (semantic element tree + page text).
+  observation   String?
+  /// The exact prompt/messages sent to the local model (ChatML-ready).
+  prompt        Json?
+  /// The model's raw JSON decision {thought, assessment, action}.
+  decision      Json?
+  tool          String?
+  /// Result string returned by the tool executor for this action.
+  actionResult  String?
+  confidence    Float?
+  risk          Float?
+  screenshotRef String?
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  @@unique([sessionId, stepIndex])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([domain])
+}
+
+/// Run-level verdict over a full trajectory, tagged for the training pipeline.
+/// GOLD = verified success; DEMONSTRATION = agent failed but the human finished
+/// it manually (imitation signal); REJECTED = failed, not useful.
+model TrajectoryRun {
+  id          String         @id @default(cuid())
+  sessionId   String         @unique
+  userId      String?
+  goal        String?
+  domain      String?
+  grade       TrajectoryGrade @default(UNGRADED)
+  outcome     String?
+  score       Int?
+  steps       Int            @default(0)
+  notes       String?
+  deletedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([grade])
+}
+
+enum TrajectoryGrade {
+  UNGRADED
+  GOLD
+  DEMONSTRATION
+  REJECTED
+}
+
+// ─── Autonomous Shopping Agent ─────────────────────────────────────────────────
+
+/// Per-user shopping preferences used by the rule-based product scorer.
+model ShoppingPreference {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  categories       String[]  @default([])
+  mustHaveFeatures String[]  @default([])
+  avoidKeywords    String[]  @default([])
+  preferredBrands  String[]  @default([])
+  maxPrice         Int?
+  minRating        Float     @default(4.0)
+  minScore         Int       @default(60)
+  autoBuyLimit     Int       @default(0)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, site, externalProductId) — dedupe, price-watch, purchase gate.
+model TrackedProduct {
+  id                String             @id @default(cuid())
+  userId            String
+  site              String
+  externalProductId String
+  title             String
+  brand             String?
+  url               String?
+  currency          String             @default("INR")
+  lastPrice         Int?
+  targetPrice       Int?
+  rating            Float?
+  score             Int                @default(0)
+  matchReasons      Json?
+  priceHistory      Json?
+  status            ProductTrackStatus @default(MATCHED)
+  sessionId         String?
+  errorMessage      String?
+  purchasedAt       DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([userId, site, externalProductId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ProductTrackStatus {
+  MATCHED
+  SKIPPED
+  WATCHING
+  PENDING_APPROVAL
+  PURCHASED
+  FAILED
+}
+
+// ─── Digital Twin — versioned artifact store (shared service) ───────────────────
+
+/// Every artifact an agent produces: structured result sets, reports, extracted
+/// documents, screenshots. Queryable by kind/tag/text and versioned per title.
+model Artifact {
+  id         String       @id @default(cuid())
+  userId     String
+  sessionId  String?
+  agent      String?
+  kind       ArtifactKind @default(DATA)
+  title      String
+  mimeType   String       @default("application/json")
+  text       String?
+  data       Json?
+  storageKey String?
+  tags       String[]     @default([])
+  version    Int          @default(1)
+  deletedAt  DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([kind])
+  @@index([userId, title])
+  @@index([userId, kind, createdAt(sort: Desc)])
+}
+
+enum ArtifactKind {
+  SCREENSHOT
+  DATA
+  REPORT
+  DOCUMENT
+  RESULT_SET
+}
+
+model SocialPost {
+  id           String          @id @default(cuid())
+  userId       String
+  platform     String          // "linkedin" | "twitter" | "instagram"
+  content      String
+  hashtags     String[]        @default([])
+  imageUrl     String?
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  status       SocialPostStatus @default(DRAFT)
+  likes        Int             @default(0)
+  shares       Int             @default(0)
+  comments     Int             @default(0)
+  views        Int             @default(0)
+  sessionId    String?
+  deletedAt    DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([userId, status, scheduledAt])
+}
+
+enum SocialPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model TravelBooking {
+  id           String              @id @default(cuid())
+  userId       String
+  type         TravelBookingType
+  origin       String?
+  destination  String
+  departDate   DateTime?
+  returnDate   DateTime?
+  travelers    Int                 @default(1)
+  budget       Int?
+  currency     String              @default("INR")
+  status       TravelBookingStatus @default(SEARCHING)
+  results      Json?
+  selectedOption Json?
+  sessionId    String?
+  deletedAt    DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, status, createdAt(sort: Desc)])
+}
+
+enum TravelBookingType {
+  FLIGHT
+  HOTEL
+  ITINERARY
+  PACKAGE
+}
+
+enum TravelBookingStatus {
+  SEARCHING
+  FOUND
+  BOOKING
+  BOOKED
+  FAILED
+}
+
+model FoodOrder {
+  id          String          @id @default(cuid())
+  userId      String
+  platform    String          // "swiggy" | "zomato"
+  restaurantName String?
+  items       Json?
+  totalAmount Int?
+  currency    String          @default("INR")
+  status      FoodOrderStatus @default(SEARCHING)
+  sessionId   String?
+  deletedAt   DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, status, createdAt(sort: Desc)])
+}
+
+enum FoodOrderStatus {
+  SEARCHING
+  FOUND
+  ORDERING
+  ORDERED
+  FAILED
+}
+
+// ─── Credential Vault (AES-256 encrypted) ─────────────────────────────────┐
+
+model CredentialVault {
+  id        String   @id @default(cuid())
+  userId    String
+  service   String   // "linkedin" | "gmail" | "outlook" | "swiggy" | "zomato" | "spotify" | "youtube" | etc.
+  label     String   // User-friendly name for this credential
+  encrypted Json?    // AES-256-GCM encrypted payload { ciphertext, iv, tag }
+  hints     String?  // Non-sensitive hints (e.g. "user@example.com")
+  expiresAt DateTime?
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, service])
+  @@index([userId])
+  @@index([service])
+}
+
+// ─── Email Integration ────────────────────────────────────────────────────
+
+model EmailAccount {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String   // "gmail" | "outlook" | "imap"
+  email         String
+  accessToken   String?  // OAuth token (encrypted via CredentialVault)
+  refreshToken  String?
+  oauth         Boolean  @default(true)
+  smtpHost      String?
+  smtpPort      Int?
+  imapHost      String?
+  imapPort      Int?
+  useTls        Boolean  @default(true)
+  isActive      Boolean  @default(true)
+  lastSyncedAt  DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      EmailMessage[]
+
+  @@index([userId])
+}
+
+model EmailMessage {
+  id          String   @id @default(cuid())
+  accountId   String
+  userId      String
+  messageId   String   @unique
+  threadId    String?
+  from        String
+  to          String[]
+  cc          String[]
+  bcc         String[]
+  subject     String
+  bodyText    String?
+  bodyHtml    String?
+  attachments Json?
+  labels      String[] @default([])
+  isRead      Boolean  @default(false)
+  isStarred   Boolean  @default(false)
+  deletedAt   DateTime?
+  receivedAt  DateTime
+  createdAt   DateTime @default(now())
+  account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, receivedAt(sort: Desc)])
+  @@index([userId, receivedAt(sort: Desc)])
+  @@index([userId, labels])
+}
+
+// ─── Media / Music Integration ────────────────────────────────────────────
+
+model MediaSession {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   // "youtube" | "spotify" | "soundcloud"
+  action       String   // "play" | "pause" | "search" | "queue" | "like"
+  query        String?
+  trackId      String?
+  trackName    String?
+  artistName   String?
+  albumName    String?
+  playlistName String?
+  status       String   @default("completed")
+  sessionId    String?
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── Idempotency Keys ─────────────────────────────────────────────────────
+
+model IdempotencyKey {
+  id        String   @id
+  userId    String
+  route     String
+  response  Json
+  statusCode Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ─── Webhooks ─────────────────────────────────────────────────────────────
+
+model Webhook {
+  id         String   @id @default(cuid())
+  userId     String
+  url        String
+  secret     String?
+  events     String[] // Array of event types to subscribe to
+  enabled    Boolean  @default(true)
+  retryCount Int      @default(3)
+  timeoutMs  Int      @default(10000)
+  lastStatus String?  // last delivery status: success | failed
+  lastTriggeredAt DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+// ─── Calendar / Scheduling ────────────────────────────────────────────────
+
+model CalendarAccount {
+  id            String           @id @default(cuid())
+  userId        String
+  provider      String           // google | outlook
+  email         String
+  accessToken   String?
+  refreshToken  String?
+  expiresAt     DateTime?
+  calendarName  String?
+  timezone      String           @default("UTC")
+  isPrimary     Boolean          @default(false)
+  lastSyncedAt  DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  events        CalendarEvent[]
+
+  @@index([userId])
+  @@index([provider])
+}
+
+model CalendarEvent {
+  id              String            @id @default(cuid())
+  accountId       String
+  userId          String
+  externalId      String?           // Google/Outlook event ID
+  title           String
+  description     String?
+  location        String?
+  startTime       DateTime
+  endTime         DateTime
+  isAllDay        Boolean           @default(false)
+  timezone        String            @default("UTC")
+  status          String            @default("confirmed") // confirmed | tentative | cancelled
+  recurrence      String?           // RRULE string
+  reminders       Json?             // reminder config
+  attendees       Json?             // [{email, name, response}]
+  travelBufferMin Int?              // travel time buffer in minutes
+  source          String            @default("manual") // manual | google | outlook
+  metadata        Json?
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  account         CalendarAccount   @relation(fields: [accountId], references: [id])
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([startTime, endTime])
+  @@index([userId, startTime, endTime])
+}
+
+// ─── Places / Locations ───────────────────────────────────────────────────
+
+model Place {
+  id          String   @id @default(cuid())
+  externalId  String?  // Google Place ID / Yelp alias
+  source      String   // google | yelp
+  name        String
+  address     String
+  lat         Float?
+  lng         Float?
+  phone       String?
+  website     String?
+  rating      Float?
+  priceLevel  Int?
+  categories  String[]
+  hours       Json?    // operating hours
+  photos      String[]
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([externalId])
+  @@index([categories])
+  @@index([lat, lng])
+}
+
+model PlaceBooking {
+  id          String   @id @default(cuid())
+  userId      String
+  placeId     String
+  placeName   String
+  bookingTime DateTime
+  partySize   Int?
+  status      String   @default("pending") // pending | confirmed | cancelled
+  notes       String?
+  metadata    Json?
+  sessionId   String?  // agent execution session
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId])
+  @@index([placeId])
+  @@index([bookingTime])
+}
+
+// ─── Email Scheduling ─────────────────────────────────────────────────────
+
+model ScheduledEmail {
+  id            String   @id @default(cuid())
+  userId        String
+  accountId     String
+  to            String[]
+  cc            String[]
+  bcc           String[]
+  subject       String
+  body          String
+  bodyHtml      String?
+  scheduledAt   DateTime
+  status        String   @default("pending") // pending | sent | failed | cancelled
+  optimalScore  Float?   // 0-1 confidence that this send time is optimal
+  sentAt        DateTime?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([scheduledAt, status])
+}
+
+// ─── Feedback & Learning Engine ──────────────────────────────────────────
+
+model TaskFeedback {
+  id        String         @id @default(cuid())
+  userId    String
+  taskId    String?
+  sessionId String?
+  rating    FeedbackRating
+  comment   String?
+  category  String?        @default("general") // general, accuracy, speed, ux
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([rating])
+}
+
+enum FeedbackRating {
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
+}
+
+model StrategyTest {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String   // Human-readable name
+  description  String?
+  strategyA    Json     // Variant A configuration
+  strategyB    Json     // Variant B configuration
+  winner       String?  // 'A' | 'B' | null (null = running)
+  totalRunsA   Int      @default(0)
+  totalRunsB   Int      @default(0)
+  successA     Int      @default(0)
+  successB     Int      @default(0)
+  avgDurationA Float    @default(0)
+  avgDurationB Float    @default(0)
+  status       String   @default("active") // active, paused, completed
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+// ─── Voice / Speech Integration ───────────────────────────────────────────
+
+model VoiceSession {
+  id          String   @id @default(cuid())
+  userId      String
+  sessionId   String?  // Links to agent execution session
+  inputText   String?  // STT result
+  outputText  String?  // TTS input
+  audioUrl    String?  // TTS output file URL
+  durationMs  Int?
+  wakeWord    Boolean  @default(false) // Was this triggered by wake word?
+  status      String   @default("completed")
+  metadata    Json?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 UserPlan           @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  interval             BillingInterval    @default(MONTHLY)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  trialEndsAt          DateTime?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  userId          String
+  stripeInvoiceId String?  @unique
+  amount          Int
+  currency        String   @default("usd")
+  status          String   @default("pending")
+  paidAt          DateTime?
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  invoicePdf      String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeInvoiceId])
+}
+
+model Team {
+  id           String           @id @default(cuid())
+  name         String
+  slug         String           @unique
+  ownerId      String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  owner     User         @relation("teamOwner", fields: [ownerId], references: [id])
+  members      TeamMember[]
+  invitations  TeamInvitation[]
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  id       String         @id @default(cuid())
+  teamId   String
+  userId   String
+  role     TeamMemberRole @default(MEMBER)
+  joinedAt DateTime       @default(now())
+  team     Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+model TeamInvitation {
+  id         String           @id @default(cuid())
+  teamId     String
+  email      String
+  role       TeamMemberRole   @default(MEMBER)
+  token      String           @unique
+  status     InvitationStatus @default(PENDING)
+  expiresAt  DateTime
+  invitedBy  String
+  acceptedAt DateTime?
+  createdAt  DateTime         @default(now())
+  team       Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([email])
+  @@index([token])
+}
+
+model DataExportRequest {
+  id          String       @id @default(cuid())
+  userId      String
+  status      ExportStatus @default(PENDING)
+  format      String       @default("json")
+  fileUrl     String?
+  expiresAt   DateTime?
+  requestedAt DateTime     @default(now())
+  completedAt DateTime?
+  deletedAt   DateTime?
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model DataDeletionRequest {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  reason      String?
+  status      String   @default("pending")
+  requestedAt DateTime @default(now())
+  completedAt DateTime?
+  deletedAt   DateTime?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DataRetentionPolicy {
+  id                   String   @id @default(cuid())
+  maxAuditLogAgeDays   Int      @default(365)
+  maxSessionAgeDays    Int      @default(90)
+  maxMemoryAgeDays     Int      @default(365)
+  maxExportFileAgeDays Int      @default(7)
+  anonymizeAfterDays   Int      @default(730)
+  updatedAt            DateTime @updatedAt
+}

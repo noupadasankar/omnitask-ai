@@ -1,0 +1,752 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String?
+  name              String?
+  avatarUrl         String?
+  role              Role               @default(USER)
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  emailVerified     Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  auditLogs         AuditLog[]
+  files             File[]
+  memories          Memory[]
+  notifications     Notification[]
+  oauthAccounts     OAuthAccount[]
+  schedules         Schedule[]
+  sessions          Session[]
+  skills            Skill[]
+  tasks             Task[]
+  preferences       UserPreferences?
+  quota             UserQuota?
+  executionSessions ExecutionSession[] @relation("userExecutionSessions")
+  agentMemories     AgentMemory[]      @relation("userAgentMemories")
+  socialPosts       SocialPost[]
+  travelBookings    TravelBooking[]
+  foodOrders        FoodOrder[]
+
+  @@index([email])
+}
+
+model UserPreferences {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  theme             String  @default("dark")
+  defaultShadowMode Boolean @default(true)
+  notifyOnComplete  Boolean @default(true)
+  notifyOnApproval  Boolean @default(true)
+  timezone          String  @default("UTC")
+  language          String  @default("en")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserQuota {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  plan             UserPlan @default(FREE)
+  tasksPerDay      Int      @default(10)
+  tasksUsedToday   Int      @default(0)
+  storageBytes     BigInt   @default(536870912)
+  storageUsedBytes BigInt   @default(0)
+  concurrentTasks  Int      @default(2)
+  resetAt          DateTime
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OAuthAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  provider     String
+  providerUid  String
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id                String             @id @default(cuid())
+  userId            String
+  title             String
+  naturalLanguage   String
+  status            TaskStatus         @default(QUEUED)
+  priority          Priority           @default(MEDIUM)
+  trigger           TaskTrigger        @default(MANUAL)
+  shadowMode        Boolean            @default(false)
+  riskScore         Float?
+  errorMessage      String?
+  result            Json?
+  context           Json?
+  agentType         String?
+  planHash          String?
+  parentTaskId      String?
+  scheduleId        String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  approvals         Approval[]
+  executions        Execution[]
+  executionSessions ExecutionSession[]
+  files             File[]
+  memories          Memory[]
+  plan              Plan?
+  parentTask        Task?              @relation("subtasks", fields: [parentTaskId], references: [id])
+  subTasks          Task[]             @relation("subtasks")
+  schedule          Schedule?          @relation(fields: [scheduleId], references: [id])
+  user              User               @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([planHash])
+}
+
+model Plan {
+  id         String   @id @default(cuid())
+  taskId     String   @unique
+  hash       String   @unique
+  rawOutput  String
+  steps      Json
+  validated  Boolean  @default(false)
+  repaired   Boolean  @default(false)
+  model      String
+  tokensUsed Int?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Execution {
+  id            String          @id @default(cuid())
+  taskId        String
+  attemptNumber Int             @default(1)
+  status        ExecutionStatus @default(RUNNING)
+  graph         Json?
+  startedAt     DateTime        @default(now())
+  completedAt   DateTime?
+  durationMs    Int?
+  task          Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  steps         ExecutionStep[]
+
+  @@index([taskId])
+}
+
+model ExecutionStep {
+  id            String     @id @default(cuid())
+  executionId   String
+  stepIndex     Int
+  stepType      String
+  action        String
+  status        StepStatus @default(PENDING)
+  input         Json?
+  output        Json?
+  errorMessage  String?
+  screenshotKey String?
+  domSnapshot   String?
+  durationMs    Int?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  execution     Execution  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, stepIndex])
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  taskId      String
+  userId      String
+  reason      String
+  context     Json?
+  status      ApprovalStatus @default(PENDING)
+  expiresAt   DateTime
+  respondedAt DateTime?
+  response    Json?
+  createdAt   DateTime       @default(now())
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+}
+
+model Memory {
+  id          String     @id @default(cuid())
+  userId      String
+  taskId      String?
+  type        MemoryType
+  content     String
+  summary     String?
+  metadata    Json?
+  importance  Float      @default(0.5)
+  accessCount Int        @default(0)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime   @default(now())
+  task        Task?      @relation(fields: [taskId], references: [id])
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model Skill {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  description  String
+  planTemplate Json
+  triggerCount Int      @default(0)
+  successRate  Float    @default(0)
+  version      Int      @default(1)
+  isPublic     Boolean  @default(false)
+  tags         String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model File {
+  id         String   @id @default(cuid())
+  userId     String
+  taskId     String?
+  name       String
+  mimeType   String
+  sizeBytes  BigInt
+  storageKey String   @unique
+  bucketName String
+  checksum   String
+  metadata   Json?
+  tags       String[]
+  createdAt  DateTime @default(now())
+  task       Task?    @relation(fields: [taskId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Schedule {
+  id             String    @id @default(cuid())
+  userId         String
+  name           String
+  cronExpression String
+  taskTemplate   Json
+  enabled        Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  runCount       Int       @default(0)
+  failCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+
+  @@index([nextRunAt, enabled])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([resource, resourceId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// ─── Autonomous Browser Agent Models ──────────────────────────
+
+model AgentExecutionStep {
+  id             String           @id @default(cuid())
+  sessionId      String
+  session        ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex      Int
+  action         String
+  target         String?
+  value          String?
+  description    String
+  riskLevel      RiskLevel
+  status         StepStatusAgent  @default(PENDING)
+  result         Json?
+  screenshotUrl  String?
+  errorMessage   String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  durationMs     Int?
+  retryCount     Int              @default(0)
+  visionAnalysis Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([sessionId, stepIndex])
+  @@index([sessionId])
+  @@index([status])
+}
+
+enum StepStatusAgent {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  WAITING_APPROVAL
+}
+
+model ExecutionSession {
+  id               String                 @id @default(cuid())
+  taskId           String
+  task             Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User                   @relation("userExecutionSessions", fields: [userId], references: [id], onDelete: Cascade)
+  status           ExecutionSessionStatus @default(PENDING)
+  plan             Json?
+  currentStepIndex Int                    @default(0)
+  totalSteps       Int                    @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  errorMessage     String?
+  metadata         Json?
+  steps            AgentExecutionStep[]
+  screenshots      Screenshot[]
+  approvalRequests ApprovalRequest[]
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ExecutionSessionStatus {
+  PENDING
+  PLANNING
+  RUNNING
+  PAUSED
+  WAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Screenshot {
+  id              String           @id @default(cuid())
+  sessionId       String
+  session         ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex       Int?
+  imageUrl        String
+  base64Thumbnail String?
+  width           Int
+  height          Int
+  timestamp       DateTime         @default(now())
+  metadata        Json?
+
+  @@index([sessionId])
+}
+
+model ApprovalRequest {
+  id            String           @id @default(cuid())
+  sessionId     String
+  session       ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepIndex     Int
+  riskLevel     RiskLevel
+  description   String
+  actionDetails Json
+  screenshotUrl String?
+  status        ApprovalStatus   @default(PENDING)
+  respondedAt   DateTime?
+  respondedBy   String?
+  createdAt     DateTime         @default(now())
+  expiresAt     DateTime
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model AgentMemory {
+  id             String     @id @default(cuid())
+  userId         String
+  user           User       @relation("userAgentMemories", fields: [userId], references: [id], onDelete: Cascade)
+  type           MemoryType
+  key            String
+  content        String
+  embedding      Float[]
+  importance     Float      @default(0.5)
+  accessCount    Int        @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+  metadata       Json?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([type])
+  @@index([key])
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+enum UserPlan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum TaskStatus {
+  QUEUED
+  PLANNING
+  PLANNED
+  AWAITING_APPROVAL
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  COMPENSATED
+  WAITING_APPROVAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum MemoryType {
+  EPISODIC
+  SEMANTIC
+  PROCEDURAL
+  WORKING
+}
+
+enum TaskTrigger {
+  MANUAL
+  SCHEDULED
+  SKILL
+  API
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  TASK_COMPLETE
+  TASK_FAILED
+  APPROVAL_REQUIRED
+  SYSTEM
+  BILLING
+}
+
+// ─── Autonomous Job Application Agent ──────────────────────────────────────────
+
+/// Per-user job-search preferences used by the rule-based match scorer.
+model JobPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  roles             String[] @default([])
+  locations         String[] @default([])
+  requiredKeywords  String[] @default([])
+  preferredKeywords String[] @default([])
+  excludeKeywords   String[] @default([])
+  skills            String[] @default([])
+  minScore          Int      @default(60)
+  dailyLimit        Int      @default(20)
+  remoteOnly        Boolean  @default(false)
+  minSalary         Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, portal, externalJobId) — prevents re-applying to the same job.
+model JobApplication {
+  id            String               @id @default(cuid())
+  userId        String
+  portal        String
+  externalJobId String
+  title         String
+  company       String?
+  location      String?
+  url           String?
+  score         Int                  @default(0)
+  matchReasons  Json?
+  status        JobApplicationStatus @default(MATCHED)
+  sessionId     String?
+  errorMessage  String?
+  appliedAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([userId, portal, externalJobId])
+  @@index([userId])
+  @@index([status])
+  @@index([sessionId])
+}
+
+enum JobApplicationStatus {
+  MATCHED
+  QUEUED
+  PROCESSING
+  SKIPPED
+  PENDING_APPROVAL
+  APPLIED
+  FAILED
+}
+
+// ─── Autonomous Shopping Agent ─────────────────────────────────────────────────
+
+/// Per-user shopping preferences used by the rule-based product scorer.
+model ShoppingPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  categories       String[] @default([])
+  mustHaveFeatures String[] @default([])
+  avoidKeywords    String[] @default([])
+  preferredBrands  String[] @default([])
+  maxPrice         Int?
+  minRating        Float    @default(4.0)
+  minScore         Int      @default(60)
+  autoBuyLimit     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// One row per (user, site, externalProductId) — dedupe, price-watch, purchase gate.
+model TrackedProduct {
+  id                String             @id @default(cuid())
+  userId            String
+  site              String
+  externalProductId String
+  title             String
+  brand             String?
+  url               String?
+  currency          String             @default("INR")
+  lastPrice         Int?
+  targetPrice       Int?
+  rating            Float?
+  score             Int                @default(0)
+  matchReasons      Json?
+  priceHistory      Json?
+  status            ProductTrackStatus @default(MATCHED)
+  sessionId         String?
+  errorMessage      String?
+  purchasedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([userId, site, externalProductId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum ProductTrackStatus {
+  MATCHED
+  SKIPPED
+  WATCHING
+  PENDING_APPROVAL
+  PURCHASED
+  FAILED
+}
+
+// ─── Digital Twin — versioned artifact store (shared service) ───────────────────
+
+/// Every artifact an agent produces: structured result sets, reports, extracted
+/// documents, screenshots. Queryable by kind/tag/text and versioned per title.
+model Artifact {
+  id         String       @id @default(cuid())
+  userId     String
+  sessionId  String?
+  agent      String?
+  kind       ArtifactKind @default(DATA)
+  title      String
+  mimeType   String       @default("application/json")
+  text       String?
+  data       Json?
+  storageKey String?
+  tags       String[]     @default([])
+  version    Int          @default(1)
+  createdAt  DateTime     @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([kind])
+  @@index([userId, title])
+}
+
+enum ArtifactKind {
+  SCREENSHOT
+  DATA
+  REPORT
+  DOCUMENT
+  RESULT_SET
+}
+
+model SocialPost {
+  id           String          @id @default(cuid())
+  userId       String
+  platform     String          // "linkedin" | "twitter" | "instagram"
+  content      String
+  hashtags     String[]        @default([])
+  imageUrl     String?
+  scheduledAt  DateTime?
+  publishedAt  DateTime?
+  status       SocialPostStatus @default(DRAFT)
+  likes        Int             @default(0)
+  shares       Int             @default(0)
+  comments     Int             @default(0)
+  views        Int             @default(0)
+  sessionId    String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+enum SocialPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+model TravelBooking {
+  id           String              @id @default(cuid())
+  userId       String
+  type         TravelBookingType
+  origin       String?
+  destination  String
+  departDate   DateTime?
+  returnDate   DateTime?
+  travelers    Int                 @default(1)
+  budget       Int?
+  currency     String              @default("INR")
+  status       TravelBookingStatus @default(SEARCHING)
+  results      Json?
+  selectedOption Json?
+  sessionId    String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum TravelBookingType {
+  FLIGHT
+  HOTEL
+  ITINERARY
+  PACKAGE
+}
+
+enum TravelBookingStatus {
+  SEARCHING
+  FOUND
+  BOOKING
+  BOOKED
+  FAILED
+}
+
+model FoodOrder {
+  id          String          @id @default(cuid())
+  userId      String
+  platform    String          // "swiggy" | "zomato"
+  restaurantName String?
+  items       Json?
+  totalAmount Int?
+  currency    String          @default("INR")
+  status      FoodOrderStatus @default(SEARCHING)
+  sessionId   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum FoodOrderStatus {
+  SEARCHING
+  FOUND
+  ORDERING
+  ORDERED
+  FAILED
+}

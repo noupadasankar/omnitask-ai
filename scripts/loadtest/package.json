@@ -1,0 +1,17 @@
+{
+  "name": "loadtest",
+  "private": true,
+  "scripts": {
+    "api": "k6 run api-load.k6.js",
+    "ws": "k6 run websocket-load.k6.js",
+    "db": "node db-benchmark.js",
+    "redis": "node redis-queue-benchmark.js",
+    "browser": "python3 browser-concurrent.py",
+    "all": "bash run-load-tests.sh"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "bull": "^4.16.5",
+    "ioredis": "^5.3.0"
+  }
+}

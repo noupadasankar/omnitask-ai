@@ -1,0 +1,33 @@
+{
+  "name": "omnitask-ai",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@8.6.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "stack": "node scripts/dev.mjs",
+    "setup": "pnpm install && pip install -r apps/browser-py/requirements.txt && python -m playwright install chromium && pnpm db:push",
+    "infra": "docker compose up -d postgres redis",
+    "infra:down": "docker compose stop postgres redis",
+    "dev:backend": "pnpm --filter backend start:dev",
+    "dev:frontend": "pnpm --filter ./apps/frontend dev",
+    "dev:worker": "pnpm --filter worker dev",
+    "dev:browser-py": "python apps/browser-py/main.py",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "db:generate": "pnpm --filter backend prisma generate",
+    "db:push": "pnpm --filter backend prisma db push",
+    "db:migrate": "pnpm --filter backend prisma migrate dev",
+    "db:studio": "pnpm --filter backend prisma studio"
+  },
+  "devDependencies": {
+    "prisma": "^7.8.0",
+    "turbo": "^2.0.0"
+  },
+  "dependencies": {},
+  "overrides": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0"
+  }
+}

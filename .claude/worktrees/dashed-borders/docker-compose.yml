@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  # ============================================================
+  # POSTGRESQL DATABASE
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: omnitask-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-omnitask}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omnitask_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-omnitask}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - omnitask-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-omnitask}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # REDIS (for queues, caching, sessions)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: omnitask-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - omnitask-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  omnitask-network:
+    driver: bridge

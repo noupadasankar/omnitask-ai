@@ -1,0 +1,689 @@
+'use client';
+
+/* =====================================================================
+   NeuralBrainCanvas — cinematic WebGL hero backdrop
+   ---------------------------------------------------------------------
+   A procedurally generated "neural brain": a synapse network whose nodes
+   fire light pulses along their connections, wrapped in orbital data
+   rings, drifting binary code, a starfield and a deep-red nebula.
+   Rendered with real UnrealBloom post-processing for the molten glow.
+
+   Built on raw three.js (already a dependency) — no R3F, no new packages.
+   Self-contained, SSR-safe (mount it via next/dynamic ssr:false),
+   DPR-clamped, visibility-paused, reduced-motion aware, fully cleaned up.
+   ===================================================================== */
+
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+
+import { cn } from '@/lib/utils';
+
+interface NeuralBrainCanvasProps {
+  className?: string;
+}
+
+/* ---------- palette (linear-ish sRGB) ---------- */
+const C_DEEP = new THREE.Color('#ff4d12'); // deep ember
+const C_AMBER = new THREE.Color('#ffae3d'); // amber
+const C_GOLD = new THREE.Color('#fff0c2'); // hot core
+const C_RED = new THREE.Color('#ff2317'); // crimson
+
+/* ---------- radial sprite texture (soft glow dot) ---------- */
+function makeGlowTexture(): THREE.Texture {
+  const s = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.2, 'rgba(255,225,170,0.9)');
+  g.addColorStop(0.45, 'rgba(255,140,50,0.35)');
+  g.addColorStop(1.0, 'rgba(255,80,20,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ---------- nebula background texture ---------- */
+function makeNebulaTexture(): THREE.Texture {
+  const w = 1024;
+  const h = 1024;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#040102';
+  ctx.fillRect(0, 0, w, h);
+  // primary warm core glow
+  let g = ctx.createRadialGradient(w * 0.5, h * 0.46, 0, w * 0.5, h * 0.46, w * 0.62);
+  g.addColorStop(0, 'rgba(86,18,6,0.95)');
+  g.addColorStop(0.35, 'rgba(48,9,4,0.6)');
+  g.addColorStop(1, 'rgba(4,1,2,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  // offset secondary nebula bloom
+  g = ctx.createRadialGradient(w * 0.74, h * 0.3, 0, w * 0.74, h * 0.3, w * 0.4);
+  g.addColorStop(0, 'rgba(120,40,12,0.5)');
+  g.addColorStop(1, 'rgba(8,2,2,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ---------- binary-stream texture ---------- */
+function makeBinaryTexture(): THREE.Texture {
+  const s = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, s, s);
+  ctx.font = '18px monospace';
+  ctx.textBaseline = 'top';
+  const cols = 16;
+  const cell = s / cols;
+  // deterministic-ish pattern (no Math.random dependency for visual stability)
+  for (let x = 0; x < cols; x++) {
+    for (let y = 0; y < cols; y++) {
+      const v = (x * 7 + y * 13 + ((x * y) % 5)) % 3;
+      if (v === 2) continue; // gaps
+      const bit = (x + y) % 2 === 0 ? '1' : '0';
+      const a = 0.12 + ((x * 3 + y) % 5) * 0.05;
+      ctx.fillStyle = `rgba(255,150,70,${a})`;
+      ctx.fillText(bit, x * cell + 4, y * cell + 4);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/* ---------- glowing code-fragment glyph texture (2:1) ---------- */
+function makeGlyphTexture(text: string): THREE.Texture {
+  const w = 256;
+  const h = 128;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+  ctx.font = 'bold 60px "JetBrains Mono", ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // glow halo
+  ctx.shadowColor = 'rgba(255,140,40,0.95)';
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = 'rgba(255,190,110,0.95)';
+  ctx.fillText(text, w / 2, h / 2);
+  // crisp core
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,244,214,0.95)';
+  ctx.fillText(text, w / 2, h / 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/* ---------- brain-shaped point cloud ---------- */
+interface BrainData {
+  positions: Float32Array;
+  colors: Float32Array;
+  edges: Uint32Array; // pairs of indices
+  count: number;
+}
+
+/* Map a unit direction onto an anatomically-shaped cerebrum surface.
+   Returns the fold depth (for colouring). Writes the point into `out`. */
+function brainShape(dir: THREE.Vector3, out: THREE.Vector3): number {
+  // anisotropic body — wider than tall, elongated front (z+) to back (z-)
+  out.set(dir.x * 1.36, dir.y * 0.9, dir.z * 1.18);
+
+  // occipital taper: the back of the brain narrows to a point
+  if (dir.z < 0) {
+    out.x *= 1 + dir.z * 0.16;
+    out.y *= 1 + dir.z * 0.07;
+  }
+  // temporal lobes: bulge the lower sides outward
+  if (dir.y < -0.05) out.x *= 1.06;
+  // flatten the underside (the brain sits flat-ish on its base)
+  if (out.y < 0) out.y *= 0.8;
+
+  // ridged sulci / gyri — creases (folds) rather than isotropic bumps
+  const r1 = 1 - Math.abs(Math.sin(dir.x * 6.5 + dir.z * 2.0));
+  const r2 = 1 - Math.abs(Math.sin(dir.y * 8.0 + dir.z * 4.5));
+  const r3 = 1 - Math.abs(Math.sin(dir.z * 7.0 - dir.x * 3.5));
+  let fold = 0.05 * r1 + 0.045 * r2 + 0.035 * r3 - 0.06;
+  fold += 0.018 * Math.sin(dir.x * 20) * Math.sin(dir.z * 18); // fine detail
+  out.addScaledVector(dir, fold);
+
+  // interhemispheric (longitudinal) fissure: deep groove down the top midline
+  const midline = Math.exp(-(out.x * out.x) / 0.01);
+  const topw = Math.max(0, out.y + 0.05);
+  out.y -= 0.13 * midline * topw;
+  out.x += (out.x >= 0 ? 1 : -1) * 0.06 * midline * topw;
+
+  return fold;
+}
+
+function buildBrain(count: number): BrainData {
+  const pts: THREE.Vector3[] = [];
+  const cols: THREE.Color[] = [];
+  const GA = Math.PI * (1 + Math.sqrt(5));
+  const dir = new THREE.Vector3();
+  const p = new THREE.Vector3();
+
+  // ---- cerebrum surface (the eligible synapse nodes) ----
+  for (let i = 0; i < count; i++) {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / count);
+    const theta = GA * (i + 0.5);
+    dir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+    const fold = brainShape(dir, p);
+    pts.push(p.clone());
+
+    // gyral crests glow amber/gold, deep sulci go crimson; frontal lobe warmer
+    const t = THREE.MathUtils.clamp(fold * 6 + 0.5, 0, 1);
+    const col = new THREE.Color().lerpColors(C_RED, C_AMBER, t);
+    if (dir.z > 0.3) col.lerp(C_GOLD, 0.25 * dir.z);
+    if (i % 13 === 0) col.lerp(C_GOLD, 0.7);
+    cols.push(col);
+  }
+
+  // ---- cerebellum: two-lobed bulge at the lower back, tight horizontal folia ----
+  const cereN = Math.floor(count * 0.12);
+  const cereCenter = new THREE.Vector3(0, -0.62, -0.92);
+  for (let i = 0; i < cereN; i++) {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / cereN);
+    const theta = GA * (i + 0.5);
+    dir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+    const folia = 0.045 * (1 - Math.abs(Math.sin(dir.y * 22)));
+    p.set(dir.x * 0.44, dir.y * 0.3, dir.z * 0.34);
+    p.addScaledVector(dir, folia);
+    p.x += (p.x >= 0 ? 1 : -1) * 0.045; // split into two lobes
+    p.add(cereCenter);
+    pts.push(p.clone());
+    cols.push(new THREE.Color().lerpColors(C_DEEP, C_AMBER, 0.3 + folia * 8));
+  }
+
+  const surfaceCount = pts.length;
+
+  // ---- brain stem ----
+  const stemN = Math.floor(count * 0.03);
+  for (let i = 0; i < stemN; i++) {
+    const f = i / stemN;
+    const a = f * Math.PI * 8;
+    const rad = 0.13 * (1 - f * 0.55);
+    pts.push(new THREE.Vector3(Math.cos(a) * rad, -0.95 - f * 0.55, Math.sin(a) * rad - 0.55));
+    cols.push(new THREE.Color().lerpColors(C_RED, C_AMBER, f));
+  }
+
+  // ---- inner volume shell: dim interior points for depth (excluded from edges) ----
+  const innerN = Math.floor(count * 0.45);
+  for (let i = 0; i < innerN; i++) {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / innerN);
+    const theta = GA * (i + 0.5) * 1.7;
+    dir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta));
+    brainShape(dir, p);
+    p.multiplyScalar(0.78);
+    pts.push(p.clone());
+    const c = new THREE.Color().lerpColors(C_DEEP, C_RED, 0.5).multiplyScalar(0.5);
+    cols.push(c);
+  }
+
+  // pack into typed arrays
+  const n = pts.length;
+  const positions = new Float32Array(n * 3);
+  const colors = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    positions[i * 3] = pts[i].x;
+    positions[i * 3 + 1] = pts[i].y;
+    positions[i * 3 + 2] = pts[i].z;
+    colors[i * 3] = cols[i].r;
+    colors[i * 3 + 1] = cols[i].g;
+    colors[i * 3 + 2] = cols[i].b;
+  }
+
+  // connect near neighbours into synapses (surface nodes only, degree-capped)
+  const edgeList: number[] = [];
+  const degree = new Uint8Array(surfaceCount);
+  const maxDeg = 3;
+  const thr = 0.155;
+  const thr2 = thr * thr;
+  const maxEdges = 5000;
+  for (let i = 0; i < surfaceCount && edgeList.length / 2 < maxEdges; i++) {
+    if (degree[i] >= maxDeg) continue;
+    const ax = positions[i * 3];
+    const ay = positions[i * 3 + 1];
+    const az = positions[i * 3 + 2];
+    for (let j = i + 1; j < surfaceCount; j++) {
+      if (degree[i] >= maxDeg) break;
+      if (degree[j] >= maxDeg) continue;
+      const dx = ax - positions[j * 3];
+      const dy = ay - positions[j * 3 + 1];
+      const dz = az - positions[j * 3 + 2];
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < thr2) {
+        edgeList.push(i, j);
+        degree[i]++;
+        degree[j]++;
+      }
+    }
+  }
+
+  return {
+    positions,
+    colors,
+    edges: new Uint32Array(edgeList),
+    count: n,
+  };
+}
+
+export default function NeuralBrainCanvas({ className }: NeuralBrainCanvasProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // ---- WebGL capability guard ----
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+      });
+    } catch {
+      return; // no WebGL → CSS background stays
+    }
+
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let width = container.clientWidth || window.innerWidth;
+    let height = container.clientHeight || window.innerHeight;
+    const DPR = Math.min(window.devicePixelRatio || 1, 1.75);
+
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(width, height);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const nebula = makeNebulaTexture();
+    scene.background = nebula;
+    scene.fog = new THREE.FogExp2(0x060102, 0.085);
+
+    const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
+    camera.position.set(0, 0.15, 4.25);
+
+    const glow = makeGlowTexture();
+
+    /* ---------------- BRAIN ---------------- */
+    const brainGroup = new THREE.Group();
+    scene.add(brainGroup);
+
+    const brain = buildBrain(1600);
+
+    // nodes
+    const nodeGeo = new THREE.BufferGeometry();
+    nodeGeo.setAttribute('position', new THREE.BufferAttribute(brain.positions, 3));
+    nodeGeo.setAttribute('color', new THREE.BufferAttribute(brain.colors, 3));
+    const nodeMat = new THREE.PointsMaterial({
+      size: 0.05,
+      map: glow,
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+      opacity: 0.95,
+    });
+    const nodes = new THREE.Points(nodeGeo, nodeMat);
+    brainGroup.add(nodes);
+
+    // synapse lines
+    const edgeCount = brain.edges.length / 2;
+    const linePos = new Float32Array(edgeCount * 6);
+    const lineCol = new Float32Array(edgeCount * 6);
+    for (let e = 0; e < edgeCount; e++) {
+      const a = brain.edges[e * 2];
+      const b = brain.edges[e * 2 + 1];
+      for (let k = 0; k < 3; k++) {
+        linePos[e * 6 + k] = brain.positions[a * 3 + k];
+        linePos[e * 6 + 3 + k] = brain.positions[b * 3 + k];
+        lineCol[e * 6 + k] = brain.colors[a * 3 + k] * 0.5;
+        lineCol[e * 6 + 3 + k] = brain.colors[b * 3 + k] * 0.5;
+      }
+    }
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+    lineGeo.setAttribute('color', new THREE.BufferAttribute(lineCol, 3));
+    const lineMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.32,
+    });
+    const lines = new THREE.LineSegments(lineGeo, lineMat);
+    brainGroup.add(lines);
+
+    // firing pulses travelling along edges
+    const PULSES = prefersReduced ? 0 : 70;
+    const pulsePos = new Float32Array(Math.max(PULSES, 1) * 3);
+    const pulseState = Array.from({ length: PULSES }, () => ({
+      edge: Math.floor((Math.random() * edgeCount) % edgeCount),
+      t: Math.random(),
+      speed: 0.004 + Math.random() * 0.012,
+    }));
+    const pulseGeo = new THREE.BufferGeometry();
+    pulseGeo.setAttribute('position', new THREE.BufferAttribute(pulsePos, 3));
+    const pulseMat = new THREE.PointsMaterial({
+      size: 0.13,
+      map: glow,
+      color: new THREE.Color('#fff2cc'),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    const pulses = new THREE.Points(pulseGeo, pulseMat);
+    if (PULSES > 0) brainGroup.add(pulses);
+
+    const va = new THREE.Vector3();
+    const vb = new THREE.Vector3();
+    function updatePulses() {
+      for (let p = 0; p < PULSES; p++) {
+        const st = pulseState[p];
+        st.t += st.speed;
+        if (st.t >= 1) {
+          st.t = 0;
+          st.edge = Math.floor(Math.random() * edgeCount) % edgeCount;
+          st.speed = 0.004 + Math.random() * 0.012;
+        }
+        const a = brain.edges[st.edge * 2];
+        const b = brain.edges[st.edge * 2 + 1];
+        va.set(brain.positions[a * 3], brain.positions[a * 3 + 1], brain.positions[a * 3 + 2]);
+        vb.set(brain.positions[b * 3], brain.positions[b * 3 + 1], brain.positions[b * 3 + 2]);
+        va.lerp(vb, st.t);
+        pulsePos[p * 3] = va.x;
+        pulsePos[p * 3 + 1] = va.y;
+        pulsePos[p * 3 + 2] = va.z;
+      }
+      pulseGeo.attributes.position.needsUpdate = true;
+    }
+
+    /* ---------------- ORBITING CODE GLYPHS ---------------- */
+    const GLYPH_SET = [
+      '</>', '{ }', '=>', '01', 'fn', '[ ]', 'AI', '#', '0x', '++',
+      '||', '::', 'λ', 'Σ', 'def', 'async', '0110', 'GET', '/>', '==',
+      '!=', '{...}', 'npm', 'git', '<AI/>', '01101', '&&', 'sql',
+    ];
+    const glyphGroup = new THREE.Group();
+    brainGroup.add(glyphGroup);
+    const glyphTexCache = new Map<string, THREE.Texture>();
+    const NGLYPH = prefersReduced ? 14 : 30;
+    const glyphData: {
+      sp: THREE.Sprite;
+      q: THREE.Quaternion;
+      r: number;
+      speed: number;
+      phase: number;
+      ellip: number;
+      bob: number;
+      seed: number;
+    }[] = [];
+    const _euler = new THREE.Euler();
+    for (let i = 0; i < NGLYPH; i++) {
+      const text = GLYPH_SET[i % GLYPH_SET.length];
+      let tex = glyphTexCache.get(text);
+      if (!tex) {
+        tex = makeGlyphTexture(text);
+        glyphTexCache.set(text, tex);
+      }
+      const mat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0,
+      });
+      const sp = new THREE.Sprite(mat);
+      const sc = 0.28 + Math.random() * 0.26;
+      sp.scale.set(sc, sc * 0.5, 1);
+      _euler.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      glyphData.push({
+        sp,
+        q: new THREE.Quaternion().setFromEuler(_euler),
+        r: 1.75 + Math.random() * 1.55,
+        speed: (0.1 + Math.random() * 0.28) * (Math.random() > 0.5 ? 1 : -1),
+        phase: Math.random() * Math.PI * 2,
+        ellip: 0.5 + Math.random() * 0.45,
+        bob: 0.08 + Math.random() * 0.22,
+        seed: Math.random() * Math.PI * 2,
+      });
+      glyphGroup.add(sp);
+    }
+    const gv = new THREE.Vector3();
+
+    /* ---------------- BINARY STREAMS ---------------- */
+    const binaryTex = makeBinaryTexture();
+    const binaryGroup = new THREE.Group();
+    scene.add(binaryGroup);
+    const binPlanes: THREE.Mesh[] = [];
+    for (let i = 0; i < 2; i++) {
+      const m = new THREE.MeshBasicMaterial({
+        map: binaryTex.clone(),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        opacity: 0.16,
+      });
+      (m.map as THREE.Texture).repeat.set(4, 4);
+      (m.map as THREE.Texture).needsUpdate = true;
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), m);
+      plane.position.set(i === 0 ? -1.5 : 1.5, 0, -4 - i * 1.5);
+      binaryGroup.add(plane);
+      binPlanes.push(plane);
+    }
+
+    /* ---------------- STARFIELD ---------------- */
+    const STAR = 1400;
+    const starPos = new Float32Array(STAR * 3);
+    const starCol = new Float32Array(STAR * 3);
+    for (let i = 0; i < STAR; i++) {
+      const r = 8 + Math.random() * 12;
+      const th = Math.random() * Math.PI * 2;
+      const ph = Math.acos(2 * Math.random() - 1);
+      starPos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+      starPos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+      starPos[i * 3 + 2] = r * Math.cos(ph);
+      const c = Math.random() > 0.7 ? C_AMBER : new THREE.Color(0.9, 0.85, 0.8);
+      starCol[i * 3] = c.r;
+      starCol[i * 3 + 1] = c.g;
+      starCol[i * 3 + 2] = c.b;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+    const starMat = new THREE.PointsMaterial({
+      size: 0.05,
+      map: glow,
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.7,
+    });
+    const stars = new THREE.Points(starGeo, starMat);
+    scene.add(stars);
+
+    /* ---------------- POST-PROCESSING (BLOOM) ---------------- */
+    const composer = new EffectComposer(renderer);
+    composer.setPixelRatio(DPR);
+    composer.setSize(width, height);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(width, height),
+      1.15, // strength
+      0.62, // radius
+      0.0, // threshold (dark scene → bloom everything bright)
+    );
+    composer.addPass(bloom);
+
+    /* ---------------- INTERACTION + LOOP ---------------- */
+    const pointer = { x: 0, y: 0, tx: 0, ty: 0 };
+    function onPointerMove(e: PointerEvent) {
+      pointer.tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      pointer.ty = (e.clientY / window.innerHeight - 0.5) * 2;
+    }
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+
+    // scroll-zoom: dolly the camera + lift the brain as the hero scrolls away
+    let scrollY = 0;
+    function onScroll() {
+      scrollY = window.scrollY || window.pageYOffset || 0;
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    function resize() {
+      if (!container) return;
+      width = container.clientWidth || window.innerWidth;
+      height = container.clientHeight || window.innerHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+      composer.setSize(width, height);
+    }
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    let visible = true;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+        if (visible && !prefersReduced) loop();
+      },
+      { threshold: 0 },
+    );
+    io.observe(container);
+
+    let raf = 0;
+    const clock = new THREE.Clock();
+
+    function frame() {
+      const t = clock.getElapsedTime();
+
+      // scroll progress across the first viewport (0 → 1)
+      const sp = Math.min(Math.max(scrollY / (window.innerHeight || 1), 0), 1);
+
+      // smooth parallax
+      pointer.x += (pointer.tx - pointer.x) * 0.045;
+      pointer.y += (pointer.ty - pointer.y) * 0.045;
+
+      brainGroup.rotation.y = t * 0.07 + pointer.x * 0.35 + sp * 0.4;
+      brainGroup.rotation.x = Math.sin(t * 0.18) * 0.06 + pointer.y * 0.18;
+      brainGroup.position.y = Math.sin(t * 0.6) * 0.04 + sp * 0.5;
+      brainGroup.scale.setScalar(1 + sp * 0.18);
+
+      updatePulses();
+
+      // node twinkle
+      nodeMat.size = 0.04 + Math.sin(t * 2.2) * 0.006;
+
+      // orbiting code glyphs (fade in, twinkle, bob on tilted orbits)
+      const glyphFade = Math.min(1, t * 0.5);
+      for (const g of glyphData) {
+        const a = t * g.speed + g.phase;
+        gv.set(Math.cos(a) * g.r, Math.sin(a) * g.r * g.ellip, 0);
+        gv.applyQuaternion(g.q);
+        gv.y += Math.sin(t * 0.8 + g.seed) * g.bob;
+        g.sp.position.copy(gv);
+        const tw = 0.55 + 0.45 * Math.sin(t * 1.5 + g.seed);
+        (g.sp.material as THREE.SpriteMaterial).opacity = 0.85 * tw * glyphFade;
+      }
+
+      // drifting binary
+      
+      binPlanes.forEach((p, i) => {
+        const map = (p.material as THREE.MeshBasicMaterial).map;
+         if (map) map.offset.y = (t * (0.01 + i * 0.006)) % 1;
+      });
+
+      stars.rotation.y = t * 0.01;
+
+      // scroll-zoom dolly + bloom swell
+      const targetZ = 4.25 - sp * 1.25;
+      camera.position.z += (targetZ - camera.position.z) * 0.06;
+      camera.position.x += (pointer.x * 0.25 - camera.position.x) * 0.04;
+      camera.lookAt(0, 0, 0);
+      bloom.strength = 1.15 + sp * 0.45;
+
+      composer.render();
+    }
+
+    function loop() {
+      cancelAnimationFrame(raf);
+      const run = () => {
+        if (!visible) return;
+        frame();
+        raf = requestAnimationFrame(run);
+      };
+      raf = requestAnimationFrame(run);
+    }
+
+    // first paint (always render at least one frame, even reduced-motion)
+    frame();
+    if (!prefersReduced) loop();
+
+    /* ---------------- CLEANUP ---------------- */
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('scroll', onScroll);
+      ro.disconnect();
+      io.disconnect();
+
+      scene.traverse((obj) => {
+        const any = obj as unknown as {
+          geometry?: THREE.BufferGeometry;
+          material?: THREE.Material | THREE.Material[];
+        };
+        any.geometry?.dispose();
+        if (Array.isArray(any.material)) any.material.forEach((m) => m.dispose());
+        else any.material?.dispose();
+      });
+      glow.dispose();
+      nebula.dispose();
+      binaryTex.dispose();
+      glyphTexCache.forEach((tex) => tex.dispose());
+      bloom.dispose();
+      composer.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentNode === container) {
+        container.removeChild(renderer.domElement);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      aria-hidden="true"
+      className={cn('pointer-events-none absolute inset-0', className)}
+    />
+  );
+}

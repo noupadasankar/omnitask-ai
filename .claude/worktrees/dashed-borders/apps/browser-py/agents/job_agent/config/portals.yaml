@@ -1,0 +1,106 @@
+naukri:
+  name: "Naukri.com"
+  url: "https://www.naukri.com"
+  login_url: "https://www.naukri.com/nlogin/login"
+  search_url: "https://www.naukri.com/jobs-in-india"
+  enabled: true
+  
+  selectors:
+    search_box: "#qsb-keyword-sugg"
+    location_box: "#qsb-location-sugg"
+    search_button: ".qsbSubmit"
+    job_card: ".srp-jobtuple"
+    job_title: ".title"
+    company_name: ".comp-name"
+    apply_button: ".apply-button"
+    easy_apply: ".easy-apply"
+  
+  wait_time: 2  # seconds between actions
+  max_scroll: 3  # number of times to scroll search results
+
+instahyre:
+  name: "Instahyre"
+  url: "https://www.instahyre.com"
+  login_url: "https://www.instahyre.com/login"
+  search_url: "https://www.instahyre.com/search-jobs"
+  enabled: true
+  
+  selectors:
+    job_card: ".opportunity-card"
+    job_title: ".opportunity-title"
+    company_name: ".company-name"
+    apply_button: ".apply-btn"
+  
+  wait_time: 2
+  max_scroll: 3
+
+hirist:
+  name: "Hirist"
+  url: "https://www.hirist.tech"
+  login_url: "https://www.hirist.tech/login"
+  search_url: "https://www.hirist.tech/jobs"
+  enabled: true
+  
+  selectors:
+    job_card: ".job-card"
+    job_title: ".job-title"
+    company_name: ".company"
+    apply_button: ".apply"
+  
+  wait_time: 2
+  max_scroll: 3
+
+cutshort:
+  name: "Cutshort"
+  url: "https://www.cutshort.io"
+  login_url: "https://www.cutshort.io/login"
+  search_url: "https://www.cutshort.io/jobs"
+  enabled: true
+  
+  selectors:
+    job_card: "div[class*='job-card'], article"
+    job_title: "h2, h3"
+    company_name: "[class*='company'] a, [class*='company-name']"
+    apply_button: "button[class*='apply'], button:has-text('Apply')"
+  
+  wait_time: 2
+  max_scroll: 3
+
+linkedin:
+  name: "LinkedIn"
+  url: "https://www.linkedin.com"
+  login_url: "https://www.linkedin.com/login"
+  search_url: "https://www.linkedin.com/jobs/collections/easy-apply/"
+  enabled: true  # ENABLED for testing
+  
+  selectors:
+    search_box: ".jobs-search-box__text-input"
+    location_box: ".jobs-search-box__input--location"
+    job_card: ".job-card-container"
+    job_title: ".job-card-list__title"
+    company_name: ".job-card-container__company-name"
+    easy_apply_button: ".jobs-apply-button--top-card"
+    modal: ".jobs-easy-apply-modal"
+    next_button: "button:has-text('Next')"
+    review_button: "button:has-text('Review')"
+    submit_button: "button:has-text('Submit application')"
+    done_button: "button:has-text('Done')"
+  
+  wait_time: 3
+  max_scroll: 2
+
+shine:
+  name: "Shine"
+  url: "https://www.shine.com"
+  login_url: "https://www.shine.com/login"
+  search_url: "https://www.shine.com/job-search"
+  enabled: false  # Start with false, enable after testing
+  
+  selectors:
+    job_card: ".job_box"
+    job_title: ".job_title"
+    company_name: ".company_name"
+    apply_button: ".apply_button"
+  
+  wait_time: 2
+  max_scroll: 3

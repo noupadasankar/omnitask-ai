@@ -1,0 +1,6 @@
+{
+  "buildCommand": "pnpm --filter omnitask-ai-frontend build",
+  "outputDirectory": "apps/frontend/.next",
+  "installCommand": "pnpm install",
+  "framework": "nextjs"
+}

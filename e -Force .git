@@ -1,0 +1,34 @@
+[33mdf55ece[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m updated Automation
+[33mdbdb692[m security: redact committed secrets from tracked plan
+[33m3c7fe15[m Add 4 agent service test suites (38 tests)
+[33mde5c22b[m Add 4 agent service test suites (55 tests)
+[33mf8d9e20[m Add 6 agent service test suites (88 tests)
+[33mf66bdf9[m Add 35 Jest tests for message-bus, reflection, agent-router
+[33m7f66087[m Add 49 Jest tests for agent core services
+[33m69ea4c7[m Add 31 Jest tests for circuit-breaker, social-post, itinerary-builder
+[33m35e240b[m Add 29 Jest tests for idempotency, cache, webhook services
+[33md214b30[m Add 64 Jest tests for 4 backend services
+[33m5c21e0e[m Add Screencaster + InputController tests (39 new), fix all AsyncMock warnings
+[33md10a56a[m Fix AsyncMock RuntimeWarning on Playwright .on() in conftest.py
+[33m646de89[m Phase 3-4: Policy engine, multi-agent, memory system, test coverage
+[33mcd9969c[m[33m ([m[1;31morigin/main[m[33m)[m updating python-files
+[33m30a297a[m add vercel.json
+[33m2f88ae2[m update topbar
+[33m7897698[m[33m ([m[1;31morigin/wip/cognition-core-backup[m[33m, [m[1;32mwip/cognition-core-backup[m[33m)[m 
+[33m03558df[m upadated job agent
+[33mddad0f7[m WIP: back up local cognitive core + training pipeline
+[33m78476da[m[33m ([m[1;32mworktree-dashed-borders[m[33m)[m Update job_agent
+[33mcb6ebaa[m Updated chrome view
+[33m7fa61a8[m Initial commit
+[33m1f1c2ca[m[33m ([m[1;33mtag: [m[1;33mbackup-before-secret-scrub[m[33m)[m fix(dev): correct dev:frontend filter, ts-node worker, build shared pkgs first
+[33mb922805[m chore: remove 146 empty scaffolding files and stray 'tatus' file
+[33ma2c93d8[m Update  frontend Topbar
+[33mba14f03[m Update  frontend Topbar
+[33mbd8e816[m Update dashboard UI and automation logic
+[33mad07b77[m Updated project files
+[33mf09bf0a[m update backend and frontend
+[33m3c60ea8[m Update auth pages
+[33m25a1cde[m update  my frontend dashbords
+[33mcc8fa59[m Initial commit - OmniTask AI project
+[33m179387e[m Rebuild OmniTask as a production autonomous AI platform with planner-executor-critic backend, Bull queue workers, WebSocket updates, Next.js dashboard, and Docker deployment.
+[33maabe38a[m[33m ([m[1;32mtrusting-banjo[m[33m)[m  initial OmniTask AI repository

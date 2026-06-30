@@ -1,0 +1,71 @@
+config:
+  target: "{{ $processEnvironment.BASE_URL || 'http://localhost:4000' }}"
+  phases:
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 100
+      name: "Warm up (10→100 users)"
+    - duration: 60
+      arrivalRate: 100
+      name: "Sustained (100 users)"
+    - duration: 30
+      arrivalRate: 100
+      rampTo: 500
+      name: "Ramp to 500"
+    - duration: 60
+      arrivalRate: 500
+      name: "Peak (500 users)"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  plugins:
+    ensure:
+      thresholds:
+        - http.response_time.p95: 3000
+        - http.request_rate: 100
+
+scenarios:
+  - name: "Auth + Tasks + Memory"
+    flow:
+      - post:
+          url: "/auth/register"
+          json:
+            email: "load-{{ $randomString.toLowerCase() }}@test.com"
+            password: "ValidPass1!"
+            name: "Load Test User"
+          capture:
+            - json: "$.accessToken"
+              as: "token"
+      - get:
+          url: "/auth/profile"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - post:
+          url: "/agent/tasks"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            goal: "search for cheap flights"
+          capture:
+            - json: "$.id"
+              as: "taskId"
+      - get:
+          url: "/agent/tasks/{{ taskId }}"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/agent/tasks"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/memory"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/memory/search?q=test"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/agent/sessions"
+          headers:
+            Authorization: "Bearer {{ token }}"

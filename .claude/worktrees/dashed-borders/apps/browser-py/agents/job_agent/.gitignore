@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Environment
+.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# Logs
+logs/*.log
+*.log
+
+# Resume files (keep private)
+config/resume.*
+
+# Browser data
+browser_data/
+.playwright/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Session data
+sessions/
+cookies/
+*.session
