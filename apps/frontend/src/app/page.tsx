@@ -718,7 +718,7 @@ function ApprovalSim() {
         <div className="space-y-1 font-mono text-[11px] text-zinc-400">
           <p><span className="text-zinc-600">ACTION_TYPE:</span> outbound-email-send</p>
           <p><span className="text-zinc-600">TARGET:</span> partner-relations@vendor.com</p>
-          <p><span className="text-zinc-600">PAYLOAD:</span> "Dear Partner, Please find the invoice attachments..."</p>
+          <p><span className="text-zinc-600">PAYLOAD:</span> &quot;Dear Partner, Please find the invoice attachments...&quot;</p>
         </div>
 
         <div className="border-t border-white/5 pt-3">
@@ -927,12 +927,12 @@ function AutomationSim() {
 
         <div className="p-3 rounded-xl border border-white/5 bg-white/[0.01]">
           <p className="text-[10px] text-zinc-500 font-mono">NATURAL LANGUAGE INSTRUCTION</p>
-          <p className="text-xs text-zinc-300 mt-1 italic font-medium">"{flows[selectedFlow].prompt}"</p>
+          <p className="text-xs text-zinc-300 mt-1 italic font-medium">&quot;{flows[selectedFlow].prompt}&quot;</p>
         </div>
 
         <div className="space-y-2">
           <p className="text-[10px] text-zinc-500 font-mono">COMPILER GRAPH DIAGRAM</p>
-          {flows[selectedFlow].steps.map((st: any, i: number) => (
+          {flows[selectedFlow].steps.map((st: any, _i: number) => (
             <div key={st.name} className="flex items-center gap-3 font-mono text-xs">
               <span className="w-20 text-zinc-500 text-[10px] uppercase font-bold">{st.name}:</span>
               <span className="text-zinc-300 flex-1 border-b border-dashed border-white/10 pb-0.5">{st.value}</span>

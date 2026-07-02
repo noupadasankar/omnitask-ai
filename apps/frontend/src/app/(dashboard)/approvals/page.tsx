@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ShieldCheck, ShieldAlert, CheckCircle2, XCircle,
+  ShieldCheck, CheckCircle2, XCircle,
   Clock, RefreshCw, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';

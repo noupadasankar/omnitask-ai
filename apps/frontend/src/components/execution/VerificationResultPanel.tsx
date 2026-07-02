@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, AlertTriangle, ShieldCheck, HelpCircle, ArrowRight, Activity } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, ShieldCheck, Activity } from 'lucide-react';
 import { useAgentStore } from '@/store/agent.store';
 
 export function VerificationResultPanel() {

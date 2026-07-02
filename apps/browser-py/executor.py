@@ -49,13 +49,20 @@ _MAX_RECOVERIES = int(os.environ.get("BROWSER_MAX_RECOVERIES", "2"))
 
 
 def _is_crash_error(err: Exception) -> bool:
-    """Heuristic: did this step fail because the page/context died (renderer
-    crash, target closed, browser closed) rather than a normal automation error?"""
+    """True when the page/context/browser died (renderer crash, target closed).
+    
+    Uses Playwright's typed exceptions where available, with a minimal string
+    fallback for edge cases the type check can't reach.
+    """
+    try:
+        from playwright._impl._errors import TargetClosedError
+        if isinstance(err, TargetClosedError):
+            return True
+    except ImportError:
+        pass
+    PLAYWRIGHT_CRASH_PATTERNS = ("crash", "target closed", "has been closed")
     msg = str(err).lower()
-    return any(s in msg for s in (
-        "crash", "target closed", "target page, context or browser has been closed",
-        "browser has been closed", "page has been closed", "connection closed",
-    ))
+    return any(p in msg for p in PLAYWRIGHT_CRASH_PATTERNS)
 
 
 class _LiveSession:

@@ -58,6 +58,23 @@ import { SupervisorOrchestratorService } from './orchestration/supervisor-orches
 import { SubGoalDecomposerService } from './orchestration/sub-goal-decomposer.service';
 import { ResultSynthesizerService } from './orchestration/result-synthesizer.service';
 
+// ─── Shadow / Simulation Mode ──────────────────────────────────────────────
+import { ShadowModeService } from './shadow-mode.service';
+import { MockBrowserProvider } from './providers/mock-browser-provider.service';
+
+// ─── Phase 2: Pipeline Stage Classes ──────────────────────────────────────
+import { ExecutionPipelineService } from './stages/execution-pipeline.service';
+import { PolicyCheckStage } from './stages/policy-check-stage.service';
+import { VerificationStage } from './stages/verification-stage.service';
+import { MemoryStage } from './stages/memory-stage.service';
+import { ReflectionStage } from './stages/reflection-stage.service';
+import { GoalPlanningStage } from './stages/goal-planning-stage.service';
+import { AutomationGateStage } from './stages/automation-gate-stage.service';
+import { WorkerDispatchStage } from './stages/worker-dispatch-stage.service';
+import { StepExecutionStage } from './stages/step-execution-stage.service';
+import { CognitiveCircuitBreaker } from './stages/circuit-breaker.service';
+import { WorldStateSensor } from './stages/world-state-sensor.service';
+
 @Module({
   imports: [
     MemoryModule,
@@ -121,6 +138,21 @@ import { ResultSynthesizerService } from './orchestration/result-synthesizer.ser
     SupervisorOrchestratorService,
     SubGoalDecomposerService,
     ResultSynthesizerService,
+    // ─── Shadow / Simulation ─────────────────────────────────────────────
+    ShadowModeService,
+    MockBrowserProvider,
+    // ─── Phase 2: Pipeline Stage Classes ───────────────────────────────────
+    ExecutionPipelineService,
+    PolicyCheckStage,
+    VerificationStage,
+    MemoryStage,
+    ReflectionStage,
+    GoalPlanningStage,
+    AutomationGateStage,
+    WorkerDispatchStage,
+    StepExecutionStage,
+    CognitiveCircuitBreaker,
+    WorldStateSensor,
   ],
   controllers: [AgentController],
   // Only services consumed by modules outside agent/ are exported

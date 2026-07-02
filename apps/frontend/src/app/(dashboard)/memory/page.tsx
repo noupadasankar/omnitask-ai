@@ -82,7 +82,9 @@ export default function MemoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
 
-  const memories: AgentMemory[] = Array.isArray(data) ? data : [];
+  const memories: AgentMemory[] = useMemo(() => {
+    return Array.isArray(data) ? data : [];
+  }, [data]);
 
   const clusters = useMemo(() => {
     return (['WORKING', 'SEMANTIC', 'EPISODIC', 'PROCEDURAL'] as const).map((t) => ({

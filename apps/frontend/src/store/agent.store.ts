@@ -2,9 +2,7 @@
 
 import { create } from 'zustand';
 import type {
-  ExecutionSession,
   AgentPlan,
-  PlannedStep,
   ApprovalRequest,
   ScreenshotFrame,
   ExecutionEvent,

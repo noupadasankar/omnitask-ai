@@ -18,14 +18,11 @@ import {
   XCircle,
   Loader2,
   Terminal,
-  Monitor,
-  Chrome,
   Bot,
   Play,
   Square,
   Pause,
   ShieldAlert,
-  Shield,
   RotateCcw,
   Camera,
   Brain,
@@ -36,9 +33,6 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import {
-  User as UserIcon,
-  Mail as MailIcon,
-  Phone as PhoneIcon,
   Trash2 as Trash2Icon,
   Save as SaveIcon,
   Plus as PlusIcon,
@@ -61,22 +55,6 @@ import {
 } from '@/services/agent.service';
 import '@/styles/omnitask-dashboard.css';
 import { SplitMicButton } from '@/components/voice/SplitMicButton';
-
-const JOB_KEYWORDS = [
-  'apply', 'application', 'linkedin', 'naukri', 'instahyre', 'hirist', 'cutshort',
-  'job apply', 'apply job', 'apply for', 'apply to',
-];
-
-function isJobRelated(text: string): boolean {
-  const lower = text.toLowerCase();
-  const hasPortal = ['linkedin', 'naukri', 'instahyre', 'hirist', 'cutshort'].some((p) =>
-    lower.includes(p),
-  );
-  const hasApply =
-    lower.includes('apply') ||
-    (lower.includes('job') && (lower.includes('find') || lower.includes('get') || lower.includes('search')));
-  return hasPortal || hasApply;
-}
 
 type OpStatus = 'pending' | 'running' | 'completed' | 'failed';
 type OpType =
@@ -176,6 +154,17 @@ function ProgressRing({ progress }: { progress: number }) {
 
 const MAX_EXECUTION_MS = 10 * 60 * 1000; // 10 minutes — module-level constant
 
+const JOB_KEYWORDS = [
+  'job', 'jobs', 'apply', 'career', 'careers', 'vacancy', 'vacancies',
+  'hiring', 'recruit', 'opening', 'openings', 'linkedin', 'naukri',
+  'resume', 'cv', 'cover letter', 'application', 'work',
+];
+
+const isJobRelated = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  return JOB_KEYWORDS.some((kw) => lower.includes(kw));
+};
+
 function DashboardPage() {
   const searchParams = useSearchParams();
   const sessionParam = searchParams?.get('session');
@@ -223,7 +212,7 @@ function DashboardPage() {
   });
   const [profileLoading, setProfileLoading] = useState(false);
   const [newAddress, setNewAddress] = useState('');
-  const [newSite, setNewSite] = useState('');
+
   const [savingProfile, setSavingProfile] = useState(false);
   const [skills, setSkills] = useState<any[]>([]);
   const [registry, setRegistry] = useState<{ agents: any[]; plugins: any[] } | null>(null);
@@ -321,6 +310,7 @@ function DashboardPage() {
       }
     }
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

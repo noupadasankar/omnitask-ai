@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Mic,
-  MicOff,
   Volume2,
   Webhook,
   Zap,
@@ -61,7 +60,7 @@ export default function VoiceSettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-bold text-white">Wake Word Detection</h3>
-              <p className="text-[10px] text-zinc-500">Say "Hey Agent" to activate</p>
+              <p className="text-[10px] text-zinc-500">Say &quot;Hey Agent&quot; to activate</p>
             </div>
           </div>
 

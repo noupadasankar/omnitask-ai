@@ -7,7 +7,7 @@ import { VisionAgentService } from './vision-agent.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { ScreenshotStreamerService } from './screenshot-streamer.service';
 import { MemoryService } from '../memory/memory.service';
-import { AgentGateway } from '../websocket/agent.gateway';
+import { ExecutionEventBus } from '../event-bus/execution-event-bus.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ToolRouterService } from './tool-router.service';
 import { VerifierAgentService } from './verifier-agent.service';
@@ -24,6 +24,18 @@ import { DriftDetectorService } from './drift-detector.service';
 import { ReflectionService } from './reflection.service';
 import { ConfidenceNetworkService } from './confidence-network.service';
 import { PreferenceMemoryService } from '../memory/preferences/preference-memory.service';
+import { ShadowModeService } from './shadow-mode.service';
+import { ExecutionPipelineService } from './stages/execution-pipeline.service';
+import { PolicyCheckStage } from './stages/policy-check-stage.service';
+import { VerificationStage } from './stages/verification-stage.service';
+import { MemoryStage } from './stages/memory-stage.service';
+import { ReflectionStage } from './stages/reflection-stage.service';
+import { GoalPlanningStage } from './stages/goal-planning-stage.service';
+import { AutomationGateStage } from './stages/automation-gate-stage.service';
+import { WorkerDispatchStage } from './stages/worker-dispatch-stage.service';
+import { StepExecutionStage } from './stages/step-execution-stage.service';
+import { CognitiveCircuitBreaker } from './stages/circuit-breaker.service';
+import { WorldStateSensor } from './stages/world-state-sensor.service';
 
 function mockService(methods: string[]) {
   const obj: any = {};
@@ -34,7 +46,7 @@ function mockService(methods: string[]) {
 describe('ExecutionEngineService', () => {
   let service: ExecutionEngineService;
   let mockPrisma: any;
-  let mockWsGateway: any;
+  let mockEventBus: any;
   let mockSessionManager: any;
   let mockPolicyEngine: any;
   let mockToolRouter: any;
@@ -57,6 +69,7 @@ describe('ExecutionEngineService', () => {
   let mockPlannerAgent: any;
   let mockGoalUnderstanding: any;
   let mockWorkerRelay: any;
+  let mockShadowMode: any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -67,7 +80,7 @@ describe('ExecutionEngineService', () => {
       approvalRequest: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       memory: { create: jest.fn() },
     };
-    mockWsGateway = mockService(['emitToSession']);
+    mockEventBus = mockService(['emit']);
     mockSessionManager = {
       create: jest.fn(),
       get: jest.fn(),
@@ -109,6 +122,7 @@ describe('ExecutionEngineService', () => {
     mockPlannerAgent = mockService(['replanFromStep']);
     mockGoalUnderstanding = mockService(['parseGoal']);
     mockWorkerRelay = mockService(['relay']);
+    mockShadowMode = mockService(['runSimulation']);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -120,7 +134,7 @@ describe('ExecutionEngineService', () => {
         { provide: PolicyEngineService, useValue: mockPolicyEngine },
         { provide: ScreenshotStreamerService, useValue: mockScreenshotStreamer },
         { provide: MemoryService, useValue: mockMemory },
-        { provide: AgentGateway, useValue: mockWsGateway },
+        { provide: ExecutionEventBus, useValue: mockEventBus },
         { provide: EventEmitter2, useValue: mockEventEmitter },
         { provide: ToolRouterService, useValue: mockToolRouter },
         { provide: VerifierAgentService, useValue: mockVerifierAgent },
@@ -137,6 +151,19 @@ describe('ExecutionEngineService', () => {
         { provide: ReflectionService, useValue: mockReflection },
         { provide: ConfidenceNetworkService, useValue: mockCpn },
         { provide: PreferenceMemoryService, useValue: mockPreferenceMemory },
+        { provide: ShadowModeService, useValue: mockShadowMode },
+        // ─── Phase 2: Pipeline Stage Classes ───────────────────────────────
+        CognitiveCircuitBreaker,
+        WorldStateSensor,
+        PolicyCheckStage,
+        VerificationStage,
+        MemoryStage,
+        ReflectionStage,
+        GoalPlanningStage,
+        AutomationGateStage,
+        WorkerDispatchStage,
+        StepExecutionStage,
+        ExecutionPipelineService,
       ],
     }).compile();
 
@@ -168,7 +195,7 @@ describe('ExecutionEngineService', () => {
 
     it('should emit session:started event', async () => {
       await service.startExecution('u1', 't1', 'test');
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith(expect.any(String), 'session:started', expect.objectContaining({ profile: 'balanced' }));
+      expect(mockEventBus.emit).toHaveBeenCalledWith(expect.any(String), 'session:started', expect.objectContaining({ profile: 'balanced' }));
     });
 
     it('should pass through clarification gate when needed', async () => {
@@ -193,7 +220,7 @@ describe('ExecutionEngineService', () => {
     it('should emit initial WSO state', async () => {
       mockWorldState.getState.mockReturnValue({ stateConfidence: 0.9, beliefSourceConsensus: 0.85, version: 1, belief: new Map() });
       await service.startExecution('u1', 't1', 'test');
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith(expect.any(String), 'cos:world_state', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith(expect.any(String), 'cos:world_state', expect.any(Object));
     });
   });
 
@@ -233,8 +260,8 @@ describe('ExecutionEngineService', () => {
 
     it('should emit step:started and step:completed events', async () => {
       await (service as any).executeStep('sess_1', baseStep, basePlan);
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith('sess_1', 'step:started', expect.any(Object));
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith('sess_1', 'step:completed', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'step:started', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'step:completed', expect.any(Object));
     });
 
     it('should handle approval-required step', async () => {
@@ -306,7 +333,7 @@ describe('ExecutionEngineService', () => {
       mockToolRouter.execute.mockResolvedValue({ success: false, error: 'Navigation failed' });
       const result = await (service as any).executeStep('sess_1', baseStep, basePlan);
       expect(result.success).toBe(false);
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith('sess_1', 'step:failed', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'step:failed', expect.any(Object));
     });
   });
 
@@ -454,14 +481,152 @@ describe('ExecutionEngineService', () => {
       mockWorkerDispatcher.dispatch.mockResolvedValue(true);
       mockPrisma.executionSession.findUnique.mockResolvedValue({ id: 'sess_1', userId: 'u1', taskId: 't1', status: 'PLANNING', metadata: {} });
       await (service as any).runExecution('sess_1', 'test');
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith('sess_1', 'plan:created', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'plan:created', expect.any(Object));
     });
 
     it('should emit automation:gate after plan is built', async () => {
       mockWorkerDispatcher.dispatch.mockResolvedValue(true);
       mockPrisma.executionSession.findUnique.mockResolvedValue({ id: 'sess_1', userId: 'u1', taskId: 't1', status: 'PLANNING', metadata: {} });
       await (service as any).runExecution('sess_1', 'test');
-      expect(mockWsGateway.emitToSession).toHaveBeenCalledWith('sess_1', 'automation:gate', expect.any(Object));
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'automation:gate', expect.any(Object));
+    });
+  });
+
+  // ── Characterization tests for runExecution (safety net for P1.1 refactor) ──
+  describe('runExecution characterization', () => {
+    const twoStepPlan = {
+      goal: 'test',
+      steps: [
+        { index: 0, action: 'navigate', target: 'url', description: 'Step 0', requiresApproval: false, riskLevel: 'LOW' as const },
+        { index: 1, action: 'click', target: '#btn', description: 'Step 1', requiresApproval: false, riskLevel: 'LOW' as const },
+      ],
+    };
+    const routedTravel = {
+      merged: { plan: twoStepPlan, graph: {} },
+      domain: 'travel', matchedSkills: ['skill-1'], preferredSitesApplied: [],
+    };
+    const defaultGateResult = { decision: 'proceed' as const, systemConfidence: 0.9, reasoning: 'All clear', weakestNode: '', thresholds: { abortThreshold: 0.3, pauseThreshold: 0.5, warnThreshold: 0.7 } };
+
+    beforeEach(() => {
+      // Reusable mock overrides for inline execution path
+      mockPlanOrchestrator.buildExecutionPlan.mockResolvedValue(routedTravel);
+      mockAutomationGate.evaluate.mockReturnValue({ proceed: true, requiresApproval: false, riskLevel: 'LOW', reason: '', targetDomains: [], triggers: [] });
+      mockPolicyEngine.checkPlan.mockReturnValue({ approved: true, stepChecks: [], blockedSteps: [], overallRisk: 'LOW', requiresApprovalSteps: [] });
+      mockBrowserAgent.createSession.mockResolvedValue(undefined);
+      mockScreenshotStreamer.startStreaming.mockReturnValue(undefined);
+      mockToolRouter.execute.mockResolvedValue({ success: true, data: {} });
+      mockScreenshotStreamer.captureAndEmit.mockResolvedValue('screenshot-data');
+      mockVisionAgent.validateStepCompletion.mockResolvedValue({ completed: true, confidence: 0.95, description: 'OK' });
+      mockVisionAgent.analyzeScreenshot.mockResolvedValue({ currentState: 'page loaded', confidence: 0.9 });
+      mockVisionAgent.detectBlockers.mockResolvedValue({ hasBlocker: false });
+      mockBrowserAgent.executeSkill.mockResolvedValue({ success: true, data: { detected: false } });
+      mockPolicyEngine.checkStep.mockReturnValue({ allowed: true, requiresApproval: false, riskLevel: 'LOW' });
+      mockPrisma.executionSession.update.mockResolvedValue({});
+      mockPrisma.approvalRequest.create.mockResolvedValue({ id: 'apr_1', sessionId: 'sess_1', status: 'PENDING', actionDetails: {} });
+      mockDriftDetector.evaluateDrift.mockReturnValue({ isDrifted: false, similarity: 0.95, explanation: 'On track', type: null });
+      mockCpn.evaluateGate.mockReturnValue(defaultGateResult);
+      mockCpn.computeSystemConfidence.mockReturnValue({ systemConfidence: 0.85 });
+      mockSessionManager.get.mockReturnValue({ aborting: false, profile: 'balanced', parsedGoal: null, stepResults: [], errorHistory: [], matchedPluginIds: [], routedDomain: 'travel' });
+      mockWorkerDispatcher.dispatch.mockResolvedValue(false);
+      mockWorldState.getState.mockReturnValue({ stateConfidence: 0.85, beliefSourceConsensus: 0.8, version: 2, belief: new Map(), history: {} });
+    });
+
+    it('T1: happy path via worker — dispatcher called, no inline browser', async () => {
+      mockWorkerDispatcher.dispatch.mockResolvedValue(true);
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockWorkerDispatcher.dispatch).toHaveBeenCalled();
+      expect(mockBrowserAgent.createSession).not.toHaveBeenCalled();
+    });
+
+    it('T2: happy path inline — all steps succeed, status = COMPLETED', async () => {
+      mockPlanOrchestrator.buildExecutionPlan.mockResolvedValue({
+        merged: { plan: { goal: 'test', steps: [twoStepPlan.steps[0]] }, graph: {} },
+        domain: 'travel', matchedSkills: ['skill-1'], preferredSitesApplied: [],
+      });
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockPrisma.executionSession.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
+      );
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'execution:completed', expect.objectContaining({ status: 'success' }));
+      expect(mockSessionManager.delete).toHaveBeenCalledWith('sess_1');
+    });
+
+    it('T3: policy block — plan rejected, status = FAILED, no browser', async () => {
+      mockPolicyEngine.checkPlan.mockReturnValue({
+        approved: false, stepChecks: [{ stepIndex: 0, check: { allowed: false, reason: 'Blocked site' } }],
+        blockedSteps: [0], overallRisk: 'HIGH', requiresApprovalSteps: [],
+      });
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockPrisma.executionSession.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+      );
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'execution:failed', expect.objectContaining({ reason: 'policy' }));
+      expect(mockBrowserAgent.createSession).not.toHaveBeenCalled();
+    });
+
+    it('T4: automation gate denied — launch rejected, status = CANCELLED', async () => {
+      mockAutomationGate.evaluate.mockReturnValue({
+        proceed: false, requiresApproval: true, riskLevel: 'HIGH', reason: 'High risk domain', targetDomains: ['example.com'], triggers: [],
+      });
+      mockEventEmitter.once.mockImplementation((_event: string, cb: any) => { cb(false); return {}; });
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockPrisma.executionSession.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }),
+      );
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'execution:cancelled', expect.objectContaining({ reason: 'launch_denied' }));
+    });
+
+    it('T5: automation gate approved — proceeds to dispatcher', async () => {
+      mockAutomationGate.evaluate.mockReturnValue({
+        proceed: false, requiresApproval: true, riskLevel: 'MEDIUM', reason: 'Needs confirmation', targetDomains: ['example.com'], triggers: [],
+      });
+      mockEventEmitter.once.mockImplementation((_event: string, cb: any) => { cb(true); return {}; });
+      mockWorkerDispatcher.dispatch.mockResolvedValue(true);
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockWorkerDispatcher.dispatch).toHaveBeenCalled();
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'execution:event', expect.objectContaining({
+        data: expect.objectContaining({ message: expect.stringContaining('Launch approved') }),
+      }));
+    });
+
+    it('T6: step execution fails + replan fails — status = FAILED', async () => {
+      mockToolRouter.execute.mockResolvedValue({ success: false, error: 'Navigation failed' });
+      mockPlannerAgent.replanFromStep.mockRejectedValue(new Error('Planner unavailable'));
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockPrisma.executionSession.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+      );
+    });
+
+    it('T7: drift abort — DISTRACTION kills execution mid-loop, outcome = SAFE_ABORT', async () => {
+      // Step 0 succeeds, drift fires at step 1
+      mockDriftDetector.evaluateDrift.mockReturnValue({ isDrifted: true, type: 'DISTRACTION', similarity: 0.15, explanation: 'Agent wandered off-goal' });
+      mockToolRouter.execute.mockResolvedValue({ success: true, data: {} });
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockPrisma.executionSession.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+      );
+      const calls = mockPrisma.executionSession.update.mock.calls;
+      const lastUpdate = calls[calls.length - 1][0];
+      expect(lastUpdate.data.metadata.cognitiveOutcome.type).toBe('SAFE_ABORT');
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'cos:drift_abort', expect.any(Object));
+    });
+
+    it('T8: CPN gate abort — confidence abort at step 0, no steps execute, outcome = SAFE_ABORT', async () => {
+      mockCpn.evaluateGate.mockReturnValue({
+        decision: 'abort', systemConfidence: 0.2, reasoning: 'Confidence too low',
+        weakestNode: 'drift',
+        thresholds: { abortThreshold: 0.3, pauseThreshold: 0.5, warnThreshold: 0.7 },
+      });
+      await (service as any).runExecution('sess_1', 'test goal');
+      expect(mockToolRouter.execute).not.toHaveBeenCalled();
+      expect(mockPrisma.executionSession.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+      );
+      const calls = mockPrisma.executionSession.update.mock.calls;
+      const lastUpdate = calls[calls.length - 1][0];
+      expect(lastUpdate.data.metadata.cognitiveOutcome.type).toBe('SAFE_ABORT');
+      expect(mockEventBus.emit).toHaveBeenCalledWith('sess_1', 'cos:cpn_gate', expect.objectContaining({ decision: 'abort' }));
     });
   });
 });

@@ -11,7 +11,6 @@ import {
   X,
   Maximize2,
   Minimize2,
-  RotateCcw,
 } from 'lucide-react';
 
 interface BrowserPreviewProps {

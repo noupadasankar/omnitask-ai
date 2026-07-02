@@ -267,7 +267,7 @@ export function TaskCard({
             {task.agents && task.agents.length > 0 ? (
               <>
                 <div className="flex -space-x-1.5">
-                  {task.agents.slice(0, 3).map((agent, i) => (
+                  {task.agents.slice(0, 3).map((agent, _i) => (
                     <div
                       key={agent}
                       className="flex h-5 w-5 items-center justify-center rounded-full border border-black bg-white/[0.06] ring-1 ring-white/10"

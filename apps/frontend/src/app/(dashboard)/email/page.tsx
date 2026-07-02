@@ -7,10 +7,8 @@ import {
   Send,
   Inbox,
   Plus,
-  Trash2,
-  CheckCircle2,
 } from 'lucide-react';
-import { listEmailAccounts, addEmailAccount, removeEmailAccount, sendEmail, listMessages } from '@/services/email.service';
+import { listEmailAccounts, addEmailAccount, sendEmail, listMessages } from '@/services/email.service';
 
 export default function EmailPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -23,6 +21,7 @@ export default function EmailPage() {
 
   useEffect(() => {
     loadAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

@@ -11,6 +11,7 @@ import { WorkerEventRelayService } from './worker-event-relay.service';
 import { WorkerStepHandler } from './worker-step-handler.service';
 import { WorkerInteractionHandler } from './worker-interaction-handler.service';
 import { WorkerDataHandler } from './worker-data-handler.service';
+import { EventBridgeSubscriber } from './event-bridge.subscriber';
 import { AgentModule } from '../agent/agent.module';
 import { MemoryModule } from '../memory/memory.module';
 import { DigitalTwinModule } from '../digital-twin/digital-twin.module';
@@ -41,6 +42,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     WorkerStepHandler,
     WorkerInteractionHandler,
     WorkerDataHandler,
+    EventBridgeSubscriber,
   ],
   exports: [WebsocketService, AgentGateway, WorkerEventRelayService],
 })

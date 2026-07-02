@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, Server, RefreshCw, Loader2, Lock,
-  Database, Users, Activity, FileText, BrainCircuit, ScrollText, AlertTriangle,
+  Users, Activity, FileText, BrainCircuit, ScrollText, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -34,7 +34,7 @@ export default function AdminSystemPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
     setError(null);
@@ -50,9 +50,9 @@ export default function AdminSystemPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, [isAdmin]);
+  useEffect(() => { load(); }, [load]);
 
   if (!isAdmin) {
     return (

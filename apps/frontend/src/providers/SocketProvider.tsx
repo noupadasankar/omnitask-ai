@@ -200,11 +200,11 @@ export function SocketProvider({
       });
     });
 
-    const unsubscribeResponded = wsService.on('approval:responded', (data: any) => {
+    const unsubscribeResponded = wsService.on('approval:responded', (_data: any) => {
       setPendingApproval(null);
     });
 
-    const unsubscribeExpired = wsService.on('approval:expired', (data: any) => {
+    const unsubscribeExpired = wsService.on('approval:expired', (_data: any) => {
       setPendingApproval(null);
     });
 

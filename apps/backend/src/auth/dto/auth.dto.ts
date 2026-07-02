@@ -33,3 +33,39 @@ export const RefreshTokenDtoSchema = z.object({
 });
 
 export type RefreshTokenDto = z.infer<typeof RefreshTokenDtoSchema>;
+
+// 🚪 Logout
+export const LogoutDtoSchema = z.object({
+  refresh_token: z.string().min(1, 'Refresh token required'),
+});
+
+export type LogoutDto = z.infer<typeof LogoutDtoSchema>;
+
+// 🔑 Forgot password
+export const ForgotPasswordDtoSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDtoSchema>;
+
+// 🔐 Reset password
+export const ResetPasswordDtoSchema = z.object({
+  token: z.string().min(1, 'Reset token required'),
+  password: passwordSchema,
+});
+
+export type ResetPasswordDto = z.infer<typeof ResetPasswordDtoSchema>;
+
+// 📧 Verify email
+export const VerifyEmailDtoSchema = z.object({
+  token: z.string().min(1, 'Verification token required'),
+});
+
+export type VerifyEmailDto = z.infer<typeof VerifyEmailDtoSchema>;
+
+// 📧 Request email verification
+export const RequestEmailVerificationDtoSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export type RequestEmailVerificationDto = z.infer<typeof RequestEmailVerificationDtoSchema>;

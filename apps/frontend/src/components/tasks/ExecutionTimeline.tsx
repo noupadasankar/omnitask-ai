@@ -93,7 +93,7 @@ export function ExecutionTimeline({
     }
 
     setSteps(newSteps);
-  }, [executionEvents]);
+  }, [executionEvents, steps]);
 
   // Auto-scroll to current step
   useEffect(() => {

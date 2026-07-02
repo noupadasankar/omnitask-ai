@@ -34,6 +34,7 @@ import { PreferenceMemoryService } from '../memory/preferences/preference-memory
 import { WorkerEventRelayService } from '../websocket/worker-event-relay.service';
 import { OrchestratorPipelineService } from './orchestrator-pipeline.service';
 import { SupervisorOrchestratorService } from './orchestration/supervisor-orchestrator.service';
+import { SessionManagerService } from './runtime/session-manager.service';
 import { OrchestrateSchema, ClarifySchema, RefineGoalSchema, ParseGoalSchema, ExecuteGoalSchema, StartExecutionSchema, NaturalLanguageCommandSchema, CreateScheduleSchema, ApprovalResponseSchema, UpdateScheduleSchema, SaveProfileSchema, SavePreferencesSchema, MultiAgentOrchestrateSchema } from './dto/agent.dto';
 import type { OrchestrateDto, ClarifyDto, RefineGoalDto, ParseGoalDto, ExecuteGoalDto, StartExecutionDto, NaturalLanguageCommandDto, CreateScheduleDto, ApprovalResponseDto, UpdateScheduleDto, SaveProfileDto, SavePreferencesDto, MultiAgentOrchestrateDto } from './dto/agent.dto';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
@@ -61,6 +62,7 @@ export class AgentController {
     private workerRelay: WorkerEventRelayService,
     private orchestrator: OrchestratorPipelineService,
     private supervisorOrchestrator: SupervisorOrchestratorService,
+    private sessionManager: SessionManagerService,
   ) { }
 
   @Post('parse-goal')
@@ -749,5 +751,67 @@ export class AgentController {
       throw new HttpException('Orchestration plan not found or already completed', HttpStatus.NOT_FOUND);
     }
     return { success: true, message: 'Orchestration cancelled' };
+  }
+
+  // ── Agent Monitor Grid ─────────────────────────────────────────────────
+
+  /**
+   * Returns live state for all active agent sessions.
+   * Used by the frontend Agent Monitor Grid to display real-time status,
+   * metrics, and health of every running execution.
+   */
+  @Get('monitor/sessions')
+  async getMonitorSessions(@Request() req: any) {
+    const allSessions = this.sessionManager.getAllSessions();
+    const userId = req.user.id;
+
+    // Get recent session history from DB (last 50, including completed)
+    const dbSessions = await this.prisma.executionSession.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        status: true,
+        currentStepIndex: true,
+        totalSteps: true,
+        startedAt: true,
+        completedAt: true,
+        errorMessage: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
+
+    // Merge in-memory state with DB records
+    const enriched = dbSessions.map((s) => {
+      const live = allSessions.find((a) => a.sessionId === s.id);
+      return {
+        id: s.id,
+        status: s.status,
+        currentStep: s.currentStepIndex,
+        totalSteps: s.totalSteps,
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        errorMessage: s.errorMessage,
+        createdAt: s.createdAt,
+        metadata: s.metadata as any,
+        live: live
+          ? {
+              browserState: live.browserState,
+              gateState: live.gateState,
+              executionState: live.executionState,
+              profile: live.profile,
+              errorCount: live.errorHistory.length,
+              routedDomain: live.routedDomain,
+            }
+          : null,
+      };
+    });
+
+    return {
+      active: allSessions.length,
+      sessions: enriched,
+    };
   }
 }

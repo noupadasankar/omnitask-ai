@@ -24,6 +24,7 @@ registry is safe between awaits).
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import shutil
@@ -115,6 +116,12 @@ class BrowserManager:
             self._locks[key] = lock
         return lock
 
+    def _on_context_close(self, key: str, *args) -> None:
+        """Pop the closed context from the registry. Bound via functools.partial
+        so ``key`` is captured eagerly — avoids the late-binding pitfall of lambdas."""
+        self._contexts.pop(key, None)
+        self._last_used.pop(key, None)
+
     async def get_context(self, user_id: Optional[str], *, headless: bool):
         """Return the user's persistent context, launching it on first use."""
         key = str(user_id or "anon")
@@ -161,8 +168,11 @@ class BrowserManager:
             except Exception:  # noqa: BLE001 — stealth is best-effort
                 pass
         # Drop our registry entry if Chromium closes/crashes so we relaunch next time.
+        # functools.partial binds `key` eagerly — unlike a lambda closure, which
+        # captures the variable by reference and would see whatever value `key`
+        # has when the event fires (a well-known Python pitfall).
         try:
-            ctx.on("close", lambda *_: self._contexts.pop(key, None))
+            ctx.on("close", functools.partial(self._on_context_close, key))
         except Exception:  # noqa: BLE001
             pass
         return ctx

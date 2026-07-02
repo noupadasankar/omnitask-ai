@@ -18,6 +18,9 @@ model User {
   mfaEnabled        Boolean            @default(false)
   mfaSecret         String?
   emailVerified     Boolean            @default(false)
+  verificationToken String?
+  resetToken        String?
+  resetTokenExpiresAt DateTime?
   deletedAt         DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -306,6 +309,26 @@ model AuditLog {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([resource, resourceId])
+}
+
+model LlmUsage {
+  id               String   @id @default(cuid())
+  userId           String?
+  sessionId        String?
+  taskId           String?
+  model            String
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  cost             Float?
+  durationMs       Int?
+  endpoint         String   @default("chat")
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([createdAt])
+  @@index([model])
 }
 
 model Notification {

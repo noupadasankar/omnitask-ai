@@ -89,18 +89,17 @@ omnitask-ai/                    ← Turborepo monorepo
 ├── apps/
 │   ├── backend/                ← NestJS API (12 domain modules)
 │   ├── frontend/               ← Next.js 14 dashboard
-│   └── worker/                 ← Standalone Playwright worker process
+│   ├── worker/                 ← Standalone NestJS queue worker process
+│   └── browser-py/             ← Python Playwright browser automation service
 ├── packages/
 │   ├── shared-types/           ← Shared TypeScript types (no drift)
-│   ├── ui/                     ← Design system tokens
 │   └── config/                 ← Shared ESLint/TS configs
 ├── infra/
 │   ├── docker/                 ← Postgres/Redis/MinIO configs
 │   ├── nginx/                  ← Reverse proxy config
 │   ├── k8s/                    ← Kubernetes manifests (Phase 5+)
-│   ├── monitoring/             ← Prometheus/Grafana/Loki
-│   └── scripts/                ← Deploy, backup, healthcheck
-└── docs/                       ← Architecture, API, agents, deployment
+│   └── monitoring/             ← Prometheus/Grafana/Loki configs
+└── scripts/                    ← Multi-platform orchestration & helper scripts
 ```
 
 ---
@@ -110,6 +109,7 @@ omnitask-ai/                    ← Turborepo monorepo
 ### Prerequisites
 
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
+- **Python 3.10+** — [python.org](https://python.org) (Required for the `browser-py` python browser automation engine)
 - **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop)
 - **pnpm 8+** — `npm install -g pnpm`
 - **OpenAI API key** — [platform.openai.com](https://platform.openai.com/api-keys)
@@ -119,7 +119,6 @@ omnitask-ai/                    ← Turborepo monorepo
 ```bash
 git clone https://github.com/noupadasankar/omnitask-ai.git
 cd omnitask-ai
-pnpm install
 ```
 
 ### 2. Configure
@@ -136,29 +135,37 @@ JWT_SECRET=<run: openssl rand -base64 64>
 JWT_REFRESH_SECRET=<run: openssl rand -base64 64>
 ```
 
-### 3. Start
+### 3. Spin Up Infrastructure
 
 ```bash
-docker-compose up -d
+pnpm infra
 ```
+This starts PostgreSQL and Redis in Docker containers in the background.
 
-### 4. Migrate Database
+### 4. Run Automated Setup
 
 ```bash
-docker-compose exec backend npx prisma migrate deploy
-docker-compose exec backend npx ts-node prisma/seed.ts   # optional dev seed
+pnpm setup
 ```
+This command automatically installs all Node/Python dependencies, installs Playwright Chromium browsers, and pushes the database schema.
 
-### 5. Open
+### 5. Start the Stack
+
+```bash
+pnpm stack
+```
+This single orchestration command starts the dev databases, hot-reloads the frontend, backend, and standalone worker, and launches the `browser-py` engine concurrently under one process window.
+
+### 6. Open the Dashboard
 
 | Service           | URL                                                |
 | ----------------- | -------------------------------------------------- |
 | **App**           | http://localhost:3000                              |
 | **API**           | http://localhost:4000/api/v1                       |
 | **Swagger**       | http://localhost:4000/api/docs                     |
-| **MinIO Console** | http://localhost:9001 (minioadmin / minioadmin123) |
+| **MinIO Console** | http://localhost:9001 (If MinIO is configured in production) |
 
-### 6. Run Your First Task
+### 7. Run Your First Task
 
 1. Register at http://localhost:3000
 2. Press **⌘K** → type your task
@@ -169,40 +176,38 @@ docker-compose exec backend npx ts-node prisma/seed.ts   # optional dev seed
 
 ## Development Commands
 
+Run commands from the repository root:
+
 ```bash
-# Start all services
-docker-compose up -d
+# Start entire local development stack (database infra + backend + frontend + worker + browser-py)
+pnpm stack
 
-# Live logs for all services
-docker-compose logs -f
+# Spin up only the DB infrastructure (Postgres + Redis)
+pnpm infra
 
-# Live logs for one service
-docker-compose logs -f backend
-docker-compose logs -f worker
+# Stop the DB infrastructure
+pnpm infra:down
 
-# Restart a service (after code changes in non-hot-reload scenarios)
-docker-compose restart backend
+# Run the full setup (Node/Python installs + DB schema sync)
+pnpm setup
 
-# Run all tests
-docker-compose exec backend pnpm test
+# Run linting across all packages
+pnpm lint
 
-# Run E2E tests
-docker-compose exec backend pnpm test:e2e
+# Run all unit and integration tests
+pnpm test
+
+# Push database schema changes directly
+pnpm db:push
+
+# Create a database migration
+pnpm db:migrate
 
 # Open Prisma Studio (database GUI)
-docker-compose exec backend npx prisma studio
+pnpm db:studio
 
-# Type check everything
-pnpm turbo type-check
-
-# Lint everything
-pnpm turbo lint
-
-# Reset dev database
-docker-compose exec backend npx prisma migrate reset
-
-# Generate Prisma client after schema change
-docker-compose exec backend npx prisma generate
+# Generate Prisma client after schema changes
+pnpm db:generate
 ```
 
 ---
@@ -235,18 +240,19 @@ Full reference in `.env.example`.
 
 ## Architecture
 
-OmniTask AI is built as a **modular monolith** (not microservices) with a separately deployed browser worker. This gives you clean module boundaries without the operational overhead of service discovery and distributed tracing — perfect for a solo developer.
+OmniTask AI is built as a **modular monolith** (not microservices) with separately deployed worker processes. The agent engine utilizes a Python-based Playwright runtime (`browser-py`) to control the browser and stream live execution frames to the user, with a fallback to NestJS in-process Puppeteer.
 
 ```
-User (Next.js) → NestJS API → BullMQ → Worker (Playwright)
-                     ↓                       ↓
-                PostgreSQL              S3 / MinIO
-                + pgvector
-                     ↓
-                Socket.io → User (live updates)
+User (Next.js) ──▶ NestJS API ──▶ Redis List (py:jobs) ──▶ browser-py (Playwright)
+                      │                                        │
+                      │                                        ▼
+                 PostgreSQL (pgvector)                    Socket.io / Redis Events
+                      │                                        │
+                      ▼                                        ▼
+                  User Logs ◀──────────────────────────── User Dashboard (Live)
 ```
 
-Full architecture details in [docs/architecture.md](docs/architecture.md).
+For a comprehensive architecture overview, see **[MAIN-README.md#architecture-overview](MAIN-README.md#architecture-overview)**.
 
 ---
 
@@ -260,19 +266,18 @@ Full architecture details in [docs/architecture.md](docs/architecture.md).
 | **4 — Memory**       | 10–12 | pgvector + Skills + Replay scrubber          |
 | **5 — Launch**       | 13–16 | Scheduling + Billing + K8s + Beta            |
 
-See [docs/roadmap.md](docs/roadmap.md) for the full checkable build checklist.
+See **[MAIN-README.md#roadmap](MAIN-README.md#roadmap)** for the full build checklist.
 
 ---
 
 ## Documentation
 
-| Doc                                  | Description                                          |
-| ------------------------------------ | ---------------------------------------------------- |
-| [Architecture](docs/architecture.md) | System design, data flow, module boundaries, scaling |
-| [API Reference](docs/api.md)         | All REST endpoints with request/response examples    |
-| [Agents Guide](docs/agents.md)       | How agents work + how to add new agent types         |
-| [Deployment](docs/deployment.md)     | VPS setup, SSL, Docker, Nginx, backups               |
-| [Roadmap](docs/roadmap.md)           | Phase-by-phase build checklist                       |
+All comprehensive documentation is consolidated in **[MAIN-README.md](MAIN-README.md)**. You can refer to it for:
+- **[Architecture Deep Dive](MAIN-README.md#architecture-overview)**: System design, data flow, agent orchestrator, and database schemas.
+- **[API Reference](MAIN-README.md#api-reference)**: Full authentication, tasks, memory, billing, and webhook REST endpoints.
+- **[WebSocket Events](MAIN-README.md#websocket-events)**: Live telemetry, log streaming, and agent feedback schemas.
+- **[Deployment Guides](MAIN-README.md#deployment)**: Docker Compose, production SSL setup with Nginx/Certbot, and Kubernetes setups.
+- **[Security Architecture](MAIN-README.md#security-architecture)**: Policy engines, sandboxing, and data encryption policies.
 
 ---
 
@@ -283,7 +288,7 @@ This is a solo developer project. Community contributions are welcome in later p
 Before contributing:
 
 1. Read [CONTRIBUTING.md](CONTRIBUTING.md) — code style, PR process
-2. Read [docs/architecture.md](docs/architecture.md) — understand WHY before changing HOW
+2. Read **[MAIN-README.md#architecture-overview](MAIN-README.md#architecture-overview)** — understand the architecture before changing how it behaves
 3. Check existing issues before opening a new one
 
 ---
@@ -321,21 +326,4 @@ Built with: NestJS · Next.js · Playwright · BullMQ · pgvector · OpenAI · s
 
 </div>
 
-## Prerequisites
 
-- Node.js 20+
-- Docker & Docker Compose
-- pnpm
-
-## Development Setup
-
-1. Clone the repository
-2. Copy `.env.example` to `.env` and fill in values
-3. Run `docker-compose up -d`
-4. Run `pnpm install`
-5. Run `pnpm db:push` to set up the database
-6. Start dev servers: `pnpm dev`
-
-## Environment Variables
-
-See `.env.example` for required variables.

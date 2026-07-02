@@ -1,3 +1,8 @@
+// Initialize OpenTelemetry before any NestJS module is loaded.
+// This must be the first import so auto-instrumentations can intercept
+// http, express, and nestjs-core module loads.
+import '../tracing';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';

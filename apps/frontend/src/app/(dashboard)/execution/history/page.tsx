@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { History, Play, CheckCircle, XCircle, Search, Calendar, ChevronRight, Cpu, RotateCcw, AlertTriangle } from 'lucide-react';
+import { History, Play, Search, Calendar, ChevronRight, Cpu, RotateCcw, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -165,8 +165,9 @@ export default function HistoryPage() {
                     <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug">{goal}</h3>
                     
                     {/* Screenshot thumbnail if available */}
-                    {thumbnail ? (
+                      {thumbnail ? (
                       <div className="rounded-xl border border-white/5 overflow-hidden h-24 bg-black relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={thumbnail.startsWith('data:') ? thumbnail : `data:image/jpeg;base64,${thumbnail}`} alt="Thumbnail" className="w-full h-full object-cover opacity-60" />
                       </div>
                     ) : (

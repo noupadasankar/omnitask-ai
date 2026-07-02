@@ -39,7 +39,7 @@ export class VoiceController {
   }
 
   @Get('history')
-  async history(@Query('limit') limit?: string) {
-    return this.voice.getHistory('system', limit ? parseInt(limit, 10) : undefined);
+  async history(@Request() req: any, @Query('limit') limit?: string) {
+    return this.voice.getHistory(req.user.id, limit ? parseInt(limit, 10) : undefined);
   }
 }

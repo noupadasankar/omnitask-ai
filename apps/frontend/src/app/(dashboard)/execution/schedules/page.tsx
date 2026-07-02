@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Plus, ToggleLeft, ToggleRight, Trash2, Cpu, ArrowLeft, Clock, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
 import { getSchedules, createSchedule, updateSchedule, deleteSchedule } from '@/services/agent.service';
 
 export default function SchedulesPage() {
@@ -236,7 +235,7 @@ export default function SchedulesPage() {
                     {/* Cron string */}
                     <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-500 bg-black/40 border border-white/5 rounded px-2.5 py-1.5 w-fit">
                       <Clock className="h-3.5 w-3.5" />
-                      <span>CRON: "{item.cronExpression}"</span>
+                      <span>CRON: &quot;{item.cronExpression}&quot;</span>
                     </div>
                   </div>
 

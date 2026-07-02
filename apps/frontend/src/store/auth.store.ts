@@ -18,7 +18,7 @@ interface AuthStore {
   setUser: (user: User | null) => void;
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
+export const useAuthStore = create<AuthStore>((set, _get) => ({
   user: null,
   loading: true,
 

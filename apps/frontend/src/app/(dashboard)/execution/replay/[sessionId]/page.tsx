@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Calendar, Monitor, Cpu } from 'lucide-react';
 import Link from 'next/link';
 import { getSessionReplay, getAgentSession, getSessionThoughts, ReplayThought } from '@/services/agent.service';
@@ -155,7 +154,8 @@ export default function ReplayPage({ params }: { params: { sessionId: string } }
 
             {/* Simulated browser window */}
             <div className="relative rounded-2xl border border-white/5 bg-black overflow-hidden flex items-center justify-center min-h-[360px] max-h-[480px]">
-              <img
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
                 src={activeFrame?.screenshotUrl?.startsWith('data:') ? activeFrame.screenshotUrl : `data:image/jpeg;base64,${activeFrame?.screenshotUrl || ''}`}
                 alt="Replay Capture View"
                 className="max-w-full max-h-[460px] object-contain transition-all duration-300"

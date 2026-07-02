@@ -28,6 +28,7 @@ import { UsersModule } from './users/users.module';
 import { TasksModule } from './tasks/tasks.module';
 import { FilesModule } from './files/files.module';
 import { WebsocketModule } from './websocket/websocket.module';
+import { ExecutionEventBusModule } from './event-bus/execution-event-bus.module';
 
 import { PlanningModule } from './planning/planning.module';
 import { ExecutionModule } from './execution/execution.module';
@@ -89,6 +90,7 @@ import { AppService } from './app.service';
     TasksModule,
     FilesModule,
     WebsocketModule,
+    ExecutionEventBusModule,
 
     PlanningModule,
     ExecutionModule,

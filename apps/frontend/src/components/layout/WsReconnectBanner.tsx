@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, CheckCircle2 } from 'lucide-react';
+import { WifiOff, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { wsService } from '@/services/websocket.service';
 

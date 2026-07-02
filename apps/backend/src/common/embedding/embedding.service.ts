@@ -65,15 +65,32 @@ export class EmbeddingService {
   /**
    * Embed a single string. Returns an empty vector on hard failure so callers can
    * degrade gracefully (similarity against [] is 0) rather than throw.
+   *
+   * All embeddings are padded/truncated to 1536 dimensions for pgvector
+   * compatibility. Local (384-dim) and hash fallback (384-dim) vectors are
+   * right-padded with zeros; OpenAI (1536-dim) passes through as-is.
    */
   async generateEmbedding(text: string): Promise<number[]> {
     const input = (text || '').slice(0, EmbeddingService.MAX_INPUT_CHARS);
     if (!input.trim()) return [];
 
-    if (this.provider === 'openai') {
-      return this.embedOpenAI(input);
-    }
-    return this.embedLocal(input);
+    const raw = this.provider === 'openai'
+      ? await this.embedOpenAI(input)
+      : await this.embedLocal(input);
+
+    return EmbeddingService.padVector(raw, 1536);
+  }
+
+  /**
+   * Pad or truncate a vector to a fixed dimension.
+   * Right-pads with zeros if shorter, truncates if longer.
+   */
+  static padVector(vec: number[], dim: number): number[] {
+    if (vec.length === dim) return vec;
+    if (vec.length > dim) return vec.slice(0, dim);
+    const padded = new Array<number>(dim).fill(0);
+    for (let i = 0; i < vec.length; i++) padded[i] = vec[i];
+    return padded;
   }
 
   /** Local MiniLM embedding via transformers.js (free, offline after first load). */

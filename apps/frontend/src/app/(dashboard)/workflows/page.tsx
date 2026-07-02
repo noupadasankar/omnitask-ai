@@ -63,7 +63,7 @@ export default function WorkflowsPage() {
   const createMutation = useCreateSchedule();
   const deleteMutation = useDeleteSchedule();
 
-  const schedules: Schedule[] = Array.isArray(data) ? data : [];
+  const schedules = useMemo(() => (Array.isArray(data) ? data : []) as Schedule[], [data]);
 
   const filtered = useMemo(
     () =>

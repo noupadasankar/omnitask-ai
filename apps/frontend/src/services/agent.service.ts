@@ -12,6 +12,11 @@ export interface StartGoalPayload {
   profile?: 'conservative' | 'balanced' | 'aggressive';
 }
 
+export async function getMonitorSessions(): Promise<{ active: number; sessions: any[] }> {
+  const { data } = await api.get('/agent/monitor/sessions');
+  return data;
+}
+
 export async function parseGoal(goal: string): Promise<any> {
   const { data } = await api.post('/agent/parse-goal', { goal });
   return data;

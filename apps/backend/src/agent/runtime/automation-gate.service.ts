@@ -70,16 +70,20 @@ export class AutomationGateService {
 
     const blockedByPolicy = policy.blockedSteps.length > 0;
     const approvalRequiredMode = input.mode === 'approval_required';
+    const simulationMode = input.mode === 'simulation';
     const highRiskSteps = policy.requiresApprovalSteps.length > 0;
     const payment = !!parsedGoal?.requiresPayment && !input.allowPayments;
     const login = !!parsedGoal?.requiresLogin && !input.allowLogin;
     const sensitiveData = !!parsedGoal?.sensitiveData;
 
-    const requiresApproval =
-      !blockedByPolicy &&
-      (approvalRequiredMode || highRiskSteps || payment || login || sensitiveData);
+    // Simulation mode: always proceed, never require approval
+    const requiresApproval = simulationMode
+      ? false
+      : !blockedByPolicy &&
+        (approvalRequiredMode || highRiskSteps || payment || login || sensitiveData);
 
     const reasonParts: string[] = [];
+    if (simulationMode) reasonParts.push('simulation mode — all actions are dry-run');
     if (blockedByPolicy) reasonParts.push('plan blocked by safety policy');
     if (approvalRequiredMode) reasonParts.push('approval-required mode');
     if (highRiskSteps)
@@ -91,14 +95,16 @@ export class AutomationGateService {
     if (sensitiveData) reasonParts.push('sensitive data involved');
 
     const decision: GateDecision = {
-      proceed: !blockedByPolicy,
+      proceed: simulationMode || !blockedByPolicy,
       requiresApproval,
       riskLevel: policy.overallRisk,
-      reason: blockedByPolicy
+      reason: blockedByPolicy && !simulationMode
         ? `Blocked: ${reasonParts.join('; ')}`
         : requiresApproval
           ? `Launch needs approval: ${reasonParts.join('; ')}`
-          : 'Auto-approved — safe, autonomous launch',
+          : simulationMode
+            ? 'Simulation mode — browser will be mocked, all actions are dry-run'
+            : 'Auto-approved — safe, autonomous launch',
       targetDomains,
       triggers: {
         blockedByPolicy,

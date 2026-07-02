@@ -62,7 +62,7 @@ export default function AgentsPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const router = useRouter();
 
-  const agents: RegistryAgent[] = data?.agents ?? [];
+  const agents = useMemo(() => data?.agents ?? [] as RegistryAgent[], [data]);
   const plugins = data?.plugins ?? [];
 
   const totalTaskTypes = useMemo(

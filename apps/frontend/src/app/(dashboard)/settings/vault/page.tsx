@@ -5,8 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Lock,
   Plus,
-  Eye,
-  EyeOff,
   Trash2,
   CheckCircle2,
   AlertCircle,
@@ -39,7 +37,6 @@ const SERVICE_PLACEHOLDERS: Record<string, string[]> = {
 export default function VaultSettingsPage() {
   const [credentials, setCredentials] = useState<any[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [newCred, setNewCred] = useState({ service: '', label: '', hints: '' });
   const [newFields, setNewFields] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

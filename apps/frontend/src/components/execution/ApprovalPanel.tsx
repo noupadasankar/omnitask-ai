@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Check, X, Clock, AlertTriangle, Keyboard, Rocket } from 'lucide-react';
+import { ShieldAlert, Check, X, Clock, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ApprovalRequest } from '@/types/agent';
 

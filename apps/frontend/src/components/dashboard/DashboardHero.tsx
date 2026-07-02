@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles, Loader2, ChevronDown } from 'lucide-react';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ===========================================================

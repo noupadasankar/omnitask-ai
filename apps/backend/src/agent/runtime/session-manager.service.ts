@@ -267,4 +267,19 @@ export class SessionManagerService {
   allSessionIds(): string[] {
     return [...this.sessions.keys()];
   }
+
+  /**
+   * Returns all tracked sessions with their full state, including derived
+   * execution state. Used by the agent monitor grid for live observability.
+   */
+  getAllSessions(): Array<ActiveSessionState & { executionState: ExecutionState }> {
+    const result: Array<ActiveSessionState & { executionState: ExecutionState }> = [];
+    for (const state of this.sessions.values()) {
+      result.push({
+        ...state,
+        executionState: this.deriveExecutionState(state.browserState, state.gateState),
+      });
+    }
+    return result;
+  }
 }

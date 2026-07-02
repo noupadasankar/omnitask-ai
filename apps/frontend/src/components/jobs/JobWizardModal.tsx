@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { uploadResume, launchJobAgent } from '@/services/job.service';
 import {
   loadJobProfile, saveJobProfile,
-  hasCompleteProfile, hasCredentialsFor,
+  hasCredentialsFor,
   type UserProfile, type PortalCredential,
 } from '@/lib/job-profile';
 

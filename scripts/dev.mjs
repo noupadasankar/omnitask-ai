@@ -18,12 +18,31 @@ import { existsSync, readFileSync } from "node:fs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const isWin = process.platform === "win32";
 
-// On Windows, .cmd/.bat shims (pnpm, docker, npm) must be run via the shell.
-const run = (cmd, args, opts = {}) =>
-  spawn(cmd, args, { cwd: repoRoot, stdio: "inherit", shell: isWin, ...opts });
+const winCmdShims = new Set(["pnpm", "npm", "npx", "yarn"]);
+const quoteForCmd = (value) => {
+  const s = String(value);
+  if (s && !/[\s"&|<>^()%!]/.test(s)) return s;
+  return `"${s.replace(/(["&|<>^()%!])/g, "^$1")}"`;
+};
+const winShimArgs = (cmd, args) => [cmd, ...args].map(quoteForCmd).join(" ");
 
-const probe = (cmd, args) =>
-  spawnSync(cmd, args, { cwd: repoRoot, stdio: "ignore", shell: isWin }).status === 0;
+// On Windows, package-manager shims are .cmd files. Launch cmd.exe explicitly
+// so Node does not emit DEP0190 for shell:true with positional args.
+const run = (cmd, args, opts = {}) => {
+  const spawnOpts = { cwd: repoRoot, stdio: "inherit", ...opts };
+  if (isWin && winCmdShims.has(cmd)) {
+    return spawn(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", winShimArgs(cmd, args)], spawnOpts);
+  }
+  return spawn(cmd, args, spawnOpts);
+};
+
+const probe = (cmd, args) => {
+  const spawnOpts = { cwd: repoRoot, stdio: "ignore" };
+  const result = isWin && winCmdShims.has(cmd)
+    ? spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", winShimArgs(cmd, args)], spawnOpts)
+    : spawnSync(cmd, args, spawnOpts);
+  return result.status === 0;
+};
 
 // Pick docker compose v2 ("docker compose") or fall back to v1 ("docker-compose").
 let dc;
@@ -91,7 +110,6 @@ console.log("▶ Starting infra (Postgres + Redis)...");
 const infra = spawnSync(dc[0], [...dc[1], "up", "-d", "postgres", "redis"], {
   cwd: repoRoot,
   stdio: "inherit",
-  shell: isWin,
 });
 if (infra.status !== 0) {
   console.error("ERROR: failed to start infra (Postgres + Redis).");

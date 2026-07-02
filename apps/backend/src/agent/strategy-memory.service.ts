@@ -152,6 +152,66 @@ export class StrategyMemoryService {
     try {
       const queryText = `${parsedGoal.taskType} ${parsedGoal.intent} ${parsedGoal.entities ? JSON.stringify(parsedGoal.entities) : ''}`;
       const queryEmbedding = await this.embeddings.generateEmbedding(queryText);
+      if (!queryEmbedding.length) return [];
+
+      const queryVec = `[${queryEmbedding.join(',')}]`;
+
+      const rows: any[] = await this.prisma.$queryRawUnsafe(
+        `SELECT *, "embedding"::vector <=> $2::vector AS _distance
+         FROM "AgentMemory"
+         WHERE "userId" = $1
+           AND "type" = 'SEMANTIC'
+           AND "deletedAt" IS NULL
+           AND "embedding" IS NOT NULL
+           AND array_length("embedding", 1) > 0
+           AND "metadata"->>'strategyType' = 'execution_pattern'
+           AND "embedding"::vector <=> $2::vector <= 0.5
+         ORDER BY _distance ASC
+         LIMIT $3`,
+        userId,
+        queryVec,
+        limit,
+      );
+
+      const recalled: RecalledStrategy[] = [];
+      for (const memory of rows) {
+        try {
+          const pattern = JSON.parse(memory.content) as StrategyPattern;
+          const distance = memory._distance ?? 0;
+          const relevanceScore = Math.max(0, Math.min(1, 1 - distance));
+          recalled.push({
+            pattern,
+            relevanceScore,
+            memoryKey: memory.key,
+          });
+          await this.memoryStore.touchAccess(memory.id);
+        } catch {
+          // Skip malformed memory entries
+        }
+      }
+
+      this.logger.log(
+        `Recalled ${recalled.length} strategies for "${parsedGoal.taskType}" (top relevance: ${recalled[0]?.relevanceScore.toFixed(2) || 'none'})`
+      );
+
+      return recalled;
+    } catch (error: any) {
+      this.logger.warn(`pgvector strategy recall failed, falling back: ${error.message}`);
+      return this.recallStrategiesFallback(userId, parsedGoal, limit);
+    }
+  }
+
+  private async recallStrategiesFallback(
+    userId: string,
+    parsedGoal: ParsedGoal,
+    limit = 3,
+  ): Promise<RecalledStrategy[]> {
+    this.logger.debug(`Fallback: recalling strategies for goalType: "${parsedGoal.taskType}"`);
+
+    try {
+      const queryText = `${parsedGoal.taskType} ${parsedGoal.intent} ${parsedGoal.entities ? JSON.stringify(parsedGoal.entities) : ''}`;
+      const queryEmbedding = await this.embeddings.generateEmbedding(queryText);
+      if (!queryEmbedding.length) return [];
 
       const memories = await this.prisma.agentMemory.findMany({
         where: {
@@ -160,16 +220,13 @@ export class StrategyMemoryService {
           metadata: { path: ['strategyType'], string_contains: 'execution_pattern' },
         },
         orderBy: { importance: 'desc' },
-        take: limit * 4, // Fetch more than needed, then rank by similarity
+        take: limit * 4,
       });
 
-      const scored = memories.map((m: any) => {
-        const similarity = this.embeddings.cosineSimilarity(
-          queryEmbedding,
-          (m.embedding as any) || [],
-        );
-        return { memory: m, similarity };
-      });
+      const scored = memories.map((m: any) => ({
+        memory: m,
+        similarity: this.embeddings.cosineSimilarity(queryEmbedding, (m.embedding as any) || []),
+      }));
 
       const top = scored
         .filter(s => s.similarity > 0.5)
@@ -185,7 +242,6 @@ export class StrategyMemoryService {
             relevanceScore: similarity,
             memoryKey: memory.key,
           });
-          // Update access metadata
           await this.memoryStore.touchAccess(memory.id);
         } catch {
           // Skip malformed memory entries
@@ -198,7 +254,7 @@ export class StrategyMemoryService {
 
       return recalled;
     } catch (error: any) {
-      this.logger.error(`Strategy recall failed: ${error.message}`);
+      this.logger.error(`Strategy recall fallback failed: ${error.message}`);
       return [];
     }
   }

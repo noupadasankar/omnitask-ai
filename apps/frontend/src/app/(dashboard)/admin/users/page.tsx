@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, RefreshCw, Loader2, Lock,
@@ -36,7 +36,7 @@ export default function AdminUsersPage() {
   const [page, setPage] = useState(0);
   const take = 20;
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
     setError(null);
@@ -52,9 +52,9 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, page, roleFilter, take]);
 
-  useEffect(() => { load(); }, [isAdmin, page, roleFilter]);
+  useEffect(() => { load(); }, [load]);
 
   const changeRole = async (userId: string, newRole: string) => {
     try {

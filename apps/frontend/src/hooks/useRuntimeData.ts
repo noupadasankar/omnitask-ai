@@ -16,6 +16,7 @@ import {
   getSchedules,
   createSchedule,
   deleteSchedule,
+  getMonitorSessions,
   type UserDomainPreferences,
 } from '@/services/agent.service';
 
@@ -104,6 +105,19 @@ export function useCreateSchedule() {
       toast.success('Workflow created');
     },
     onError: () => toast.error('Failed to create workflow'),
+  });
+}
+
+/* ===========================================================
+   MONITOR  →  GET /agent/monitor/sessions
+=========================================================== */
+
+export function useMonitorSessions() {
+  return useQuery({
+    queryKey: ['agent-monitor'],
+    queryFn: getMonitorSessions,
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 }
 

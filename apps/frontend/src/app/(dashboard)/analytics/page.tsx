@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
   const { data, isLoading, isError, refetch, isFetching } = useExecutionHistory();
 
-  const sessions: Session[] = Array.isArray(data) ? data : [];
+  const sessions = useMemo(() => Array.isArray(data) ? data as Session[] : [], [data]);
 
   const inRange = useMemo(() => {
     const cutoff = Date.now() - RANGE_DAYS[timeRange] * 86400 * 1000;

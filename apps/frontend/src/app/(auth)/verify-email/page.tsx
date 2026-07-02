@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
-import { Cpu, Loader2, CheckCircle2, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Loader2, CheckCircle2, ShieldAlert, ArrowRight } from 'lucide-react';
 // import { authService } from '@/services/auth.service';
 
 export default function VerifyEmailPage() {
@@ -24,7 +24,7 @@ export default function VerifyEmailPage() {
         // await authService.verifyEmail(token);
         await new Promise((r) => setTimeout(r, 2000)); // Mocking the verification delay
         setStatus('success');
-      } catch (error) {
+      } catch (_error) {
         setStatus('error');
       }
     };

@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 
-import { Cpu, Loader2, Mail, ArrowLeft, TerminalSquare } from 'lucide-react';
-import { authService } from '@/services/auth.service';
 import { cn } from '@/lib/utils';
+import { Loader2, Mail, ArrowLeft, TerminalSquare } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -24,7 +23,7 @@ export default function ForgotPasswordPage() {
       await new Promise((r) => setTimeout(r, 1000)); // Mock wait
       setIsSent(true);
       toast.success('Reset protocol initiated. Check your inbox.');
-    } catch (error: any) {
+    } catch (_error: any) {
       toast.error('Failed to initiate reset protocol.');
     } finally {
       setIsLoading(false);

@@ -9,7 +9,7 @@ import { VisionAgentService } from './vision-agent.service';
 import { PolicyEngineService } from './policy-engine.service';
 import { ScreenshotStreamerService } from './screenshot-streamer.service';
 import { MemoryService } from '../memory/memory.service';
-import { AgentGateway } from '../websocket/agent.gateway';
+import { ExecutionEventBus } from '../event-bus/execution-event-bus.service';
 import {
   AgentPlan,
   PlannedStep,
@@ -28,6 +28,7 @@ import { VerifierAgentService, ExecutionSummary } from './verifier-agent.service
 import { StrategyMemoryService } from './strategy-memory.service';
 import { GoalUnderstandingService, ParsedGoal } from './goal-understanding.service';
 import { WorkerEventRelayService } from '../websocket/worker-event-relay.service';
+import { ShadowModeService } from './shadow-mode.service';
 // ─── Runtime Layer ────────────────────────────────────────────────────────────
 import { SessionManagerService } from './runtime/session-manager.service';
 import { ClarificationGateService } from './runtime/clarification-gate.service';
@@ -40,6 +41,8 @@ import { DriftDetectorService } from './drift-detector.service';
 import { ReflectionService } from './reflection.service';
 import { ConfidenceNetworkService } from './confidence-network.service';
 import { PreferenceMemoryService } from '../memory/preferences/preference-memory.service';
+// ─── Phase 2: Pipeline Stage Classes ────────────────────────────────────────
+import { ExecutionPipelineService } from './stages/execution-pipeline.service';
 
 @Injectable()
 export class ExecutionEngineService implements OnModuleDestroy {
@@ -61,8 +64,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     @Inject(forwardRef(() => ScreenshotStreamerService))
     private screenshotStreamer: ScreenshotStreamerService,
     private memory: MemoryService,
-    @Inject(forwardRef(() => AgentGateway))
-    private wsGateway: AgentGateway,
+    private eventBus: ExecutionEventBus,
     private eventEmitter: EventEmitter2,
     private toolRouter: ToolRouterService,
     private verifierAgent: VerifierAgentService,
@@ -82,6 +84,10 @@ export class ExecutionEngineService implements OnModuleDestroy {
     private reflection: ReflectionService,
     private cpn: ConfidenceNetworkService,
     private preferenceMemory: PreferenceMemoryService,
+    // ─── Shadow / Simulation ─────────────────────────────────────────
+    private shadowMode: ShadowModeService,
+    // ─── Phase 2: Pipeline Stage Classes ─────────────────────────────
+    private readonly pipeline: ExecutionPipelineService,
   ) {}
 
   /**
@@ -145,12 +151,12 @@ export class ExecutionEngineService implements OnModuleDestroy {
 
     this.sessionManager.create(sessionId, profile, parsedGoal);
 
-    this.wsGateway.emitToSession(sessionId, 'session:started', { sessionId, profile });
+    this.eventBus.emit(sessionId, 'session:started', { sessionId, profile });
 
     // Emit initial WSO state
     const initialWso = this.worldState.getState(sessionId);
     if (initialWso) {
-      this.wsGateway.emitToSession(sessionId, 'cos:world_state', {
+      this.eventBus.emit(sessionId, 'cos:world_state', {
         stateConfidence: initialWso.stateConfidence,
         beliefSourceConsensus: initialWso.beliefSourceConsensus,
         version: initialWso.version,
@@ -185,765 +191,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     config?: Partial<BrowserSessionConfig>,
     parsedGoal?: ParsedGoal,
   ): Promise<void> {
-    const executionStart = Date.now();
-    let session: any = null;
-    try {
-      session = await this.prisma.executionSession.findUnique({
-        where: { id: sessionId },
-      });
-
-      if (!session) {
-        this.logger.error(`Session not found: ${sessionId}`);
-        return;
-      }
-
-      const routed = await this.planOrchestrator.buildExecutionPlan(
-        sessionId,
-        session.userId,
-        session.taskId,
-        goal,
-        parsedGoal,
-        config,
-      );
-      const plan = routed.merged.plan;
-      const executionGraph = routed.merged.graph;
-
-      // Persist the plan. Status stays in the PLANNING family — the orchestrator
-      // NEVER writes RUNNING (RUNNING is derived from a live browser). The gate
-      // moves to PLAN_READY: plan built, policy-checked, no browser yet.
-      await this.prisma.executionSession.update({
-        where: { id: sessionId },
-        data: {
-          plan: plan as any,
-          totalSteps: plan.steps.length,
-          metadata: {
-            ...((session.metadata as Record<string, any>) || {}),
-            parsedGoal: parsedGoal || null,
-            routedDomain: routed.domain,
-            matchedSkills: routed.matchedSkills,
-            preferredSitesApplied: routed.preferredSitesApplied || [],
-          } as any,
-        },
-      });
-
-      this.wsGateway.emitToSession(sessionId, 'plan:created', { plan });
-      this.sessionManager.setGateState(sessionId, 'PLAN_READY');
-
-      // Step 2: Check policy
-      const policyCheck = this.policyEngine.checkPlan(plan);
-      if (!policyCheck.approved) {
-        this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [FAILED] (Policy Blocked)`);
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'execution_state_changed',
-          data: { sessionId, oldState: 'executing', newState: 'failed' }
-        });
-
-        const firstBlocked = policyCheck.stepChecks.find((sc) => !sc.check.allowed);
-        const policyReason = firstBlocked?.check.reason || 'Plan violates safety policies';
-        const earlyOutcome: CognitiveOutcome = {
-          type: CognitiveOutcomeType.SAFE_ABORT,
-          explanation: `Safety policy block: ${policyReason}`,
-          confidence: 1.0,
-          timestamp: Date.now(),
-        };
-
-        await this.prisma.executionSession.update({
-          where: { id: sessionId },
-          data: {
-            status: 'FAILED',
-            errorMessage: 'Plan blocked by policy engine',
-            metadata: {
-              cognitiveOutcome: earlyOutcome as any,
-            } as any
-          },
-        });
-        this.wsGateway.emitToSession(sessionId, 'execution:failed', {
-          reason: 'policy',
-          message: 'Plan violates safety policies',
-          blockedSteps: policyCheck.blockedSteps,
-          cognitiveOutcome: earlyOutcome,
-        });
-        return;
-      }
-
-      // ── AUTOMATION GATE (MANDATORY) ───────────────────────────────────────
-      // Rule 1: NO browser opens before this gate passes. We have a plan but no
-      // Chromium yet (browserState === 'IDLE'). The gate decides whether the
-      // user must authorize the launch; if so we HOLD here until they respond.
-      const gate = this.automationGate.evaluate(
-        plan,
-        parsedGoal,
-        {
-          approved: policyCheck.approved,
-          overallRisk: policyCheck.overallRisk,
-          blockedSteps: policyCheck.blockedSteps,
-          requiresApprovalSteps: policyCheck.requiresApprovalSteps,
-        },
-        {
-          mode: (config as any)?.mode,
-          allowPayments: (config as any)?.allowPayments,
-          allowLogin: (config as any)?.allowLogin,
-        },
-      );
-
-      this.wsGateway.emitToSession(sessionId, 'automation:gate', {
-        sessionId,
-        proceed: gate.proceed,
-        requiresApproval: gate.requiresApproval,
-        riskLevel: gate.riskLevel,
-        reason: gate.reason,
-        targetDomains: gate.targetDomains,
-        triggers: gate.triggers,
-      });
-
-      if (gate.requiresApproval) {
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:warn' as ExecutionEventType,
-          data: { source: 'AutomationGate', message: `Launch held for approval — ${gate.reason}` },
-        });
-
-        const launchApproved = await this.requestLaunchApproval(sessionId, plan, gate);
-
-        // User may have cancelled the whole session while we waited.
-        if (this.sessionManager.get(sessionId)?.aborting) return;
-
-        if (!launchApproved) {
-          this.logger.log(`State Transition for session ${sessionId}: [IDLE] ──> [STOPPED] (launch denied)`);
-          // Clear the gate first so the derived state doesn't stick on
-          // WAITING_APPROVAL (e.g. when the gate timed out rather than being
-          // explicitly denied via handleApprovalResponse).
-          this.sessionManager.setGateState(sessionId, 'CLEARED');
-          this.sessionManager.transitionBrowserState(sessionId, 'STOPPED');
-          const deniedOutcome: CognitiveOutcome = {
-            type: CognitiveOutcomeType.SAFE_ABORT,
-            explanation: 'User denied browser launch at the automation gate',
-            confidence: 1.0,
-            timestamp: Date.now(),
-          };
-          await this.prisma.executionSession.update({
-            where: { id: sessionId },
-            data: {
-              status: 'CANCELLED',
-              completedAt: new Date(),
-              metadata: {
-                ...((session.metadata as Record<string, any>) || {}),
-                cognitiveOutcome: deniedOutcome as any,
-              } as any,
-            },
-          });
-          this.wsGateway.emitToSession(sessionId, 'execution:event', {
-            type: 'log:warn' as ExecutionEventType,
-            data: { source: 'AutomationGate', message: '🚫 Launch denied — browser was never opened.' },
-          });
-          this.wsGateway.emitToSession(sessionId, 'execution:cancelled', { reason: 'launch_denied' });
-          this.sessionManager.delete(sessionId);
-          return;
-        }
-
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:info' as ExecutionEventType,
-          data: { source: 'AutomationGate', message: '✅ Launch approved — opening browser.' },
-        });
-      }
-
-      // Gate passed → hand off to the browser runtime. From here the runtime
-      // (inline BrowserAgent/Streamer, or the Python worker) owns every
-      // browser:state: INITIALIZING → READY → RUNNING. The orchestrator only
-      // clears the gate; it never declares the browser running.
-      this.sessionManager.setGateState(sessionId, 'CLEARED');
-
-      // Check for structured Domain Adapter match first
-      const firstStep = plan.steps[0];
-      if (firstStep && firstStep.action === 'navigate' && firstStep.value) {
-        const url = firstStep.value;
-        const adapters = [new ZomatoAdapter(), new SwiggyAdapter()];
-        let matchedAdapter = null;
-
-        for (const adapter of adapters) {
-          if (adapter.matches(url)) {
-            matchedAdapter = adapter;
-            break;
-          }
-        }
-
-        if (matchedAdapter) {
-          this.logger.log(`Domain Adapter MATCHED for URL: "${url}". Launching dedicated structured navigator.`);
-          // The adapter IS the browser runtime here; launch() resolving is the
-          // runtime confirming a live browser, so these transitions are truthful.
-          this.sessionManager.transitionBrowserState(sessionId, 'INITIALIZING');
-          const provider = new PlaywrightProvider();
-          await provider.launch(sessionId, session.userId, { headless: config?.headless ?? true });
-          this.sessionManager.transitionBrowserState(sessionId, 'RUNNING');
-          
-          this.wsGateway.emitToSession(sessionId, 'execution:event', {
-            type: 'agent:thinking',
-            data: { message: `Domain Adapter active. Navigating ${url} structurally.` },
-          });
-
-          const adapterResult = await matchedAdapter.executeGoal(provider, sessionId, goal);
-          await provider.close(sessionId);
-          this.sessionManager.transitionBrowserState(sessionId, 'STOPPED');
-
-          await this.prisma.executionSession.update({
-            where: { id: sessionId },
-            data: {
-              status: adapterResult.success ? 'COMPLETED' : 'FAILED',
-              completedAt: new Date(),
-              errorMessage: adapterResult.error || null,
-            },
-          });
-
-          this.wsGateway.emitToSession(sessionId, 'execution:completed', {
-            status: adapterResult.success ? 'success' : 'failed',
-            reason: adapterResult.error,
-          });
-
-          this.sessionManager.delete(sessionId);
-          return;
-        }
-      }
-
-      // When no site plugin matched, let the Python engine run a real local skill
-      // (search → extract → act, rule-based) instead of a weak generic plan.
-      // 'job' → the full autonomous applier (login → score → fill → approve →
-      // submit), so a dashboard goal like "apply to AI jobs" runs end-to-end.
-      // It stays safe via JOB_AGENT_DRY_RUN (default) + approve-before-submit and
-      // uses the user's tuned preferences.yaml when no explicit prefs are passed.
-      const SKILL_BY_DOMAIN: Record<string, string> = {
-        job: 'job_application',
-        shopping: 'shopping',
-        food: 'food',
-        research: 'research',
-        social: 'social',
-        email: 'email',
-        media: 'media',
-      };
-      // These domains are implemented by the autonomous Python skills (real
-      // search / extract / apply, LLM-optional), NOT the inline site-plugin step
-      // plans. The registry domain agents resolve with plugin ids
-      // (matchedSkills != []), which would otherwise suppress the skill route and
-      // run an incomplete inline plan — e.g. only "Initialize runtime" when the
-      // LLM planner is unavailable, or a broken "navigate: missing URL". So
-      // whenever a domain HAS a Python skill, always use it (executor.py ignores
-      // the step plan when a skill is set). Domains without one (travel) keep the
-      // inline plugin plan; an unmatched goal falls back to the cognitive
-      // 'web_task' agent (observe→reason→act on any site; it degrades to the
-      // generic search skill when the local model is unavailable).
-      const skillHint =
-        SKILL_BY_DOMAIN[routed.domain] ||
-        (routed.matchedSkills.length === 0 ? 'web_task' : undefined);
-
-      const dispatched = await this.workerDispatcher.dispatch(
-        sessionId,
-        session.taskId,
-        session.userId,
-        goal,
-        plan,
-        executionGraph,
-        config,
-        skillHint,
-      );
-      if (dispatched) {
-        // The Python worker owns the browser now and emits its lifecycle
-        // (INITIALIZING → READY → RUNNING) via worker:browser_state → relay.
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:info' as ExecutionEventType,
-          data: {
-            source: 'WorkerRuntime',
-            message: `Execution delegated to browser worker (${plan.steps.length} steps). Live stream starting...`,
-          },
-        });
-        return;
-      }
-
-      // A skill-routed goal (job/shopping/food/research/social) can ONLY run on
-      // the Python engine — that's where the real automation AND the smooth CDP
-      // live stream live. The inline Puppeteer fallback can only replay a step
-      // plan with choppy screenshots, which for a skill goal means a broken run
-      // (e.g. "navigate: missing URL") + a useless screenshot view. So fail fast
-      // with an actionable message instead of silently degrading.
-      if (skillHint) {
-        const message =
-          'Live browser engine (Python) is offline — the autonomous run and the ' +
-          'live Chromium stream both run there. Start it:  python apps/browser-py/main.py  ' +
-          '(headful), then relaunch. The browser will open and stream live.';
-        this.logger.error(
-          `[ExecutionEngine] Python engine offline for skill "${skillHint}" — refusing inline fallback (no live stream / cannot run skill).`,
-        );
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:error' as ExecutionEventType,
-          data: { source: 'WorkerRuntime', message },
-        });
-        throw new Error(message);
-      }
-
-      // Step 3: Create browser session (inline fallback)
-      await this.browserAgent.createSession(sessionId, config);
-      this.wsGateway.emitToSession(sessionId, 'browser:initialized', {});
-
-      // Step 4: Start screenshot streaming. The inline runtime declares RUNNING
-      // when the first real frame is produced (in ScreenshotStreamer) — never
-      // guessed here. createSession already moved IDLE → INITIALIZING → READY.
-      this.screenshotStreamer.startStreaming(sessionId, 500);
-
-      // ── Step 5: Execute steps ─────────────────────────────────────────────
-      let completedSuccessfully = true;
-      let failureReason: string | null = null;
-      let stepsCompleted = 0;
-      let stepsFailed = 0;
-      const sessionState = this.sessionManager.get(sessionId);
-      if (sessionState) {
-        sessionState.matchedPluginIds = routed.matchedSkills;
-        sessionState.routedDomain = routed.domain;
-      }
-
-      // Phase mapping for drift sensitivity: transaction phase is strictest
-      const inferDriftPhase = (stepIndex: number, totalSteps: number): 'research' | 'selection' | 'transaction' => {
-        const ratio = stepIndex / Math.max(totalSteps - 1, 1);
-        if (ratio < 0.35) return 'research';
-        if (ratio < 0.75) return 'selection';
-        return 'transaction';
-      };
-
-      for (const step of plan.steps) {
-        if (this.sessionManager.get(sessionId)?.aborting) {
-          break;
-        }
-
-        // ── COS: Pre-step drift evaluation ───────────────────────────────
-        if (step.index > 0) {
-          const driftPhase = inferDriftPhase(step.index, plan.steps.length);
-          const drift = await this.driftDetector.evaluateDrift(sessionId, driftPhase);
-
-          this.wsGateway.emitToSession(sessionId, 'cos:drift', {
-            stepIndex: step.index,
-            similarity: drift.similarity,
-            isDrifted: drift.isDrifted,
-            type: drift.type,
-            phase: driftPhase,
-            explanation: drift.explanation,
-          });
-
-          this.wsGateway.emitToSession(sessionId, 'execution:event', {
-            type: 'log:info' as ExecutionEventType,
-            data: {
-              source: 'DriftDetector',
-              message: drift.explanation,
-              similarity: drift.similarity,
-              driftType: drift.type,
-            },
-          });
-
-          // Hard abort on DISTRACTION drift — agent wandered off-goal
-          if (drift.isDrifted && drift.type === 'DISTRACTION') {
-            this.logger.warn(`[COS] DISTRACTION drift detected at step ${step.index}. Aborting session.`);
-            completedSuccessfully = false;
-            failureReason = `Cognitive drift abort: ${drift.explanation}`;
-            if (sessionState) sessionState.errorHistory.push(`[DriftDetector] ${failureReason}`);
-
-            this.wsGateway.emitToSession(sessionId, 'cos:drift_abort', {
-              stepIndex: step.index,
-              reason: failureReason,
-              similarity: drift.similarity,
-            });
-            this.wsGateway.emitToSession(sessionId, 'execution:event', {
-              type: 'log:error' as ExecutionEventType,
-              data: { source: 'CognitiveOS', message: `🛑 Drift Abort: ${failureReason}` },
-            });
-            break;
-          }
-
-          // CONSTRAINT_INDUCED drift: emit alert but continue with re-anchor note
-          if (drift.isDrifted && drift.type === 'CONSTRAINT_INDUCED') {
-            this.wsGateway.emitToSession(sessionId, 'execution:event', {
-              type: 'log:warn' as ExecutionEventType,
-              data: {
-                source: 'DriftDetector',
-                message: `⚓ Constraint-induced drift: re-anchoring trajectory. ${drift.explanation}`,
-              },
-            });
-          }
-
-          // ── COS: Feed drift similarity into CPN ──────────────────────────────────
-          this.cpn.recordConfidence(sessionId, 'drift', drift.similarity, 1.5, 0.001);
-
-          // Also pipe WSO composite confidence into CPN
-          const wsoState = this.worldState.getState(sessionId);
-          if (wsoState) {
-            this.cpn.recordConfidence(sessionId, 'wso', wsoState.stateConfidence, 1.0, 0.003);
-          }
-        }
-
-        // ── COS: Cognitive Gate — evaluate CPN before executing step ─────────────
-        const sessionProfile = (this.sessionManager.get(sessionId)?.profile ?? 'balanced') as 'conservative' | 'balanced' | 'aggressive';
-        const gate = this.cpn.evaluateGate(sessionId, sessionProfile);
-
-        // Always emit structured gate event — frontend panel consumes this directly
-        this.wsGateway.emitToSession(sessionId, 'cos:cpn_gate', {
-          stepIndex: step.index,
-          decision: gate.decision,
-          systemConfidence: gate.systemConfidence,
-          profile: sessionProfile,
-          reasoning: gate.reasoning,
-          weakestNode: gate.weakestNode,
-          thresholds: {
-            abort: gate.thresholds.abortThreshold,
-            pause: gate.thresholds.pauseThreshold,
-            warn:  gate.thresholds.warnThreshold,
-          },
-          timestamp: Date.now(),
-        });
-
-        if (gate.decision !== 'proceed') {
-          // Always log the gate decision
-          this.wsGateway.emitToSession(sessionId, 'execution:event', {
-            type: `log:${gate.decision === 'warn' ? 'warn' : 'error'}` as ExecutionEventType,
-            data: {
-              source: 'CognitiveGate',
-              message: `🧠 [CPN Gate] ${gate.decision.toUpperCase()} — ${gate.reasoning}`,
-              systemConfidence: gate.systemConfidence,
-              profile: sessionProfile,
-            },
-          });
-
-          if (gate.decision === 'abort') {
-            completedSuccessfully = false;
-            failureReason = `Cognitive Gate abort: ${gate.reasoning}`;
-            if (sessionState) sessionState.errorHistory.push(`[CognitiveGate] ${failureReason}`);
-            this.wsGateway.emitToSession(sessionId, 'cos:drift_abort', {
-              stepIndex: step.index,
-              reason: failureReason,
-              similarity: gate.systemConfidence,
-            });
-            break;
-          }
-
-          if (gate.decision === 'pause') {
-            // Pause execution and notify user — they can resume/cancel
-            await this.prisma.executionSession.update({
-              where: { id: sessionId },
-              data: { status: 'PAUSED' },
-            });
-            this.wsGateway.emitToSession(sessionId, 'execution:paused', {
-              reason: 'cognitive_gate',
-              message: gate.reasoning,
-              systemConfidence: gate.systemConfidence,
-            });
-            // Wait for resume signal (poll every 2s, max 120s)
-            let waited = 0;
-            while (waited < 120000) {
-              await new Promise((r) => setTimeout(r, 2000));
-              waited += 2000;
-              const current = await this.prisma.executionSession.findUnique({ where: { id: sessionId } });
-              if (current?.status === 'RUNNING') break;
-              if (current?.status === 'CANCELLED' || this.sessionManager.get(sessionId)?.aborting) {
-                completedSuccessfully = false;
-                failureReason = 'Cancelled during cognitive gate pause';
-                break;
-              }
-            }
-            if (!completedSuccessfully) break;
-          }
-          // 'warn' falls through — execution continues, user is informed
-        }
-
-        // Emit tool routing decision for frontend transparency
-        const routeDesc = this.toolRouter.describeRoute(step);
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:info' as ExecutionEventType,
-          data: { source: 'ToolRouter', message: `Step[${step.index}] → ${routeDesc}` },
-        });
-
-        try {
-          const stepResult = await this.executeStep(sessionId, step, plan);
-          if (sessionState) sessionState.stepResults.push(stepResult);
-
-          if (stepResult.success) {
-            stepsCompleted++;
-
-            // ── COS: Record completed step for drift trajectory ───────────
-            await this.driftDetector.recordStep(
-              sessionId,
-              step.index,
-              step.action,
-              step.description,
-              stepResult.data ? JSON.stringify(stepResult.data).substring(0, 300) : 'Step executed successfully.',
-            );
-
-            // ── COS: Emit updated WSO telemetry ──────────────────────────
-            const wso = this.worldState.getState(sessionId);
-            if (wso) {
-              this.wsGateway.emitToSession(sessionId, 'cos:world_state', {
-                stateConfidence: wso.stateConfidence,
-                beliefSourceConsensus: wso.beliefSourceConsensus,
-                version: wso.version,
-                belief: Object.fromEntries(
-                  Object.entries(wso.belief).map(([k, v]) => [k, { value: v.value, confidence: v.sourceConfidence, source: v.source }])
-                ),
-              });
-            }
-          } else {
-            stepsFailed++;
-            completedSuccessfully = false;
-            failureReason = 'Step execution failed';
-            if (sessionState) sessionState.errorHistory.push(`Step ${step.index}: ${step.description} — failed`);
-
-            // Attempt replan
-            const beforeScreenshot = await this.browserAgent.takeScreenshot(sessionId);
-            const couldReplan = await this.attemptReplan(
-              sessionId,
-              plan,
-              step.index,
-              failureReason,
-              beforeScreenshot || undefined,
-            );
-
-            if (!couldReplan) {
-              break;
-            }
-          }
-        } catch (error: any) {
-          stepsFailed++;
-          completedSuccessfully = false;
-          failureReason = error.message;
-          if (sessionState) sessionState.errorHistory.push(`Step ${step.index}: ${error.message}`);
-          break;
-        }
-      }
-
-      // ── Step 6: Cleanup browser and CPN ───────────────────────────────────────
-      this.screenshotStreamer.stopStreaming(sessionId);
-      await this.browserAgent.closeSession(sessionId);
-      // CPN session data is ephemeral — clear after run
-      this.cpn.clearSession(sessionId);
-
-      const durationMs = Date.now() - executionStart;
-      const errorHistory = sessionState?.errorHistory || [];
-      const currentParsedGoal = sessionState?.parsedGoal || parsedGoal;
-
-      // ── Step 7: VerifierAgent — did we actually achieve the goal? ─────────
-      let verificationResult: any = null;
-      if (currentParsedGoal) {
-        this.wsGateway.emitToSession(sessionId, 'execution:event', {
-          type: 'log:info' as ExecutionEventType,
-          data: { source: 'VerifierAgent', message: 'Verifying execution against original intent...' },
-        });
-
-        const executionSummary: ExecutionSummary = {
-          goal,
-          parsedGoal: currentParsedGoal,
-          plan,
-          stepsCompleted,
-          stepsFailed,
-          totalSteps: plan.steps.length,
-          errorHistory,
-          durationMs,
-          matchedPluginIds: sessionState?.matchedPluginIds || plan.skillsUsed,
-        };
-
-        verificationResult = await this.verifierAgent.verify(executionSummary);
-
-        // \u2500\u2500 COS: Pipe verifier score into CPN (final sensor reading) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        this.cpn.recordConfidence(sessionId, 'verifier', verificationResult.score ?? 0.5, 2.0, 0);
-
-        // Emit verification result to frontend
-        this.wsGateway.emitToSession(sessionId, 'execution:verified', {
-          verified: verificationResult.verified,
-          confidence: verificationResult.confidence,
-          score: verificationResult.score,
-          summary: verificationResult.summary,
-          gaps: verificationResult.gaps,
-          achievements: verificationResult.achievements,
-          nextAction: verificationResult.nextAction,
-          reasoning: verificationResult.reasoning,
-          evidence: verificationResult.evidence,
-        });
-
-        this.logger.log(
-          `VerifierAgent result: score=${verificationResult.score}, verified=${verificationResult.verified}, nextAction=${verificationResult.nextAction}`
-        );
-
-        // If verifier says retry/replan and we were "successful" by step count, correct the status
-        if (completedSuccessfully && !verificationResult.verified && verificationResult.nextAction === 'replan') {
-          completedSuccessfully = false;
-          failureReason = `VerifierAgent: Goal not fully achieved. Gaps: ${verificationResult.gaps.join('; ')}`;
-        }
-      }
-
-      // ── Step 8: Store episodic memory ─────────────────────────────────────
-      if (completedSuccessfully) {
-        const stepsSummary = plan.steps.map(s => `${s.action}(${s.target})`).join(' → ');
-        await this.memory.store(
-          session.userId,
-          `Success: ${goal}`,
-          MemoryType.EPISODIC,
-          {
-            taskId: session.taskId,
-            summary: stepsSummary,
-            metadata: { duration: durationMs },
-          },
-        );
-
-        // ── Step 9: Store strategy pattern for future recall ─────────────────
-        if (currentParsedGoal) {
-          await this.strategyMemory.storeSuccessfulStrategy(
-            session.userId,
-            goal,
-            currentParsedGoal,
-            plan,
-            durationMs,
-          );
-          this.wsGateway.emitToSession(sessionId, 'execution:event', {
-            type: 'log:info' as ExecutionEventType,
-            data: { source: 'StrategyMemory', message: 'Strategy pattern saved for future task recall' },
-          });
-
-          // Auto-learn domain preferences from successfully executed plugins/skills
-          const categoryMap: Record<string, string> = {
-            job_search: 'job',
-            food_order: 'food',
-            shopping: 'shopping',
-            price_comparison: 'shopping',
-            ticket_booking: 'travel',
-            hotel_booking: 'travel',
-            flight_search: 'travel',
-          };
-          const category = categoryMap[currentParsedGoal.taskType] || sessionState?.routedDomain || 'general';
-          const pluginIds = sessionState?.matchedPluginIds?.length
-            ? sessionState.matchedPluginIds
-            : (plan.skillsUsed || []).filter((id) => id.includes('-'));
-          if (pluginIds.length > 0) {
-            for (const pluginId of pluginIds) {
-              await this.preferenceMemory.autoLearn(session.userId, category, pluginId);
-            }
-            const updatedPrefs = await this.preferenceMemory.getPreferences(session.userId);
-            this.wsGateway.emitToSession(sessionId, 'memory:preferences_updated', {
-              sessionId,
-              preferences: updatedPrefs,
-              learnedFrom: pluginIds,
-            });
-          }
-        }
-      } else if (currentParsedGoal && errorHistory.length > 0) {
-        // Store failure pattern so planner avoids this approach next time
-        await this.strategyMemory.storeFailurePattern(
-          session.userId,
-          goal,
-          currentParsedGoal,
-          errorHistory,
-          stepsCompleted,
-        );
-      }
-
-      // Determine final cognitive outcome type and explanation
-      let outcomeType = CognitiveOutcomeType.SUCCESS;
-      let outcomeExplanation = 'Goal completed successfully.';
-      
-      if (!completedSuccessfully) {
-        if (failureReason?.includes('drift') || failureReason?.includes('Cognitive Gate') || failureReason?.includes('CPN Gate') || failureReason?.includes('abort')) {
-          outcomeType = CognitiveOutcomeType.SAFE_ABORT;
-          outcomeExplanation = failureReason;
-        } else if (failureReason?.includes('Cancelled') || failureReason?.includes('pause') || failureReason?.includes('escalat')) {
-          outcomeType = CognitiveOutcomeType.ESCALATED;
-          outcomeExplanation = failureReason;
-        } else {
-          outcomeType = CognitiveOutcomeType.FAILED;
-          outcomeExplanation = failureReason || 'Execution failed due to step or system errors.';
-        }
-      }
-
-      const systemConfidence = this.cpn.computeSystemConfidence(sessionId).systemConfidence;
-      const cognitiveOutcome: CognitiveOutcome = {
-        type: outcomeType,
-        explanation: outcomeExplanation,
-        confidence: systemConfidence,
-        timestamp: Date.now(),
-      };
-
-      // ── Step 10: Update final DB status ──────────────────────────────────
-      await this.prisma.executionSession.update({
-        where: { id: sessionId },
-        data: {
-          status: completedSuccessfully ? 'COMPLETED' : 'FAILED',
-          completedAt: new Date(),
-          errorMessage: failureReason,
-          metadata: {
-            ...(session.metadata as Record<string, any> || {}),
-            cognitiveOutcome: cognitiveOutcome as any,
-          } as any
-        },
-      });
-
-      this.wsGateway.emitToSession(sessionId, 'execution:completed', {
-        status: completedSuccessfully ? 'success' : 'failed',
-        reason: failureReason,
-        cognitiveOutcome,
-        verification: verificationResult ? {
-          verified: verificationResult.verified,
-          score: verificationResult.score,
-          summary: verificationResult.summary,
-        } : null,
-      });
-
-      // ── Step 11: Async post-run COS reflection (non-blocking) ─────────
-      if (currentParsedGoal) {
-        this.reflection.reflect(
-          sessionId,
-          session.userId,
-          goal,
-          currentParsedGoal,
-          plan,
-          sessionState?.stepResults || [],
-          errorHistory,
-          completedSuccessfully,
-        );
-      }
-
-      // ── Step 12: Emit final WSO state + clean up COS contexts ────────
-      const finalWso = this.worldState.getState(sessionId);
-      if (finalWso) {
-        this.wsGateway.emitToSession(sessionId, 'cos:world_state_final', {
-          stateConfidence: finalWso.stateConfidence,
-          beliefSourceConsensus: finalWso.beliefSourceConsensus,
-          version: finalWso.version,
-          historyLength: Object.keys(finalWso.history).length,
-        });
-      }
-      this.worldState.removeSession(sessionId);
-      this.driftDetector.clearSession(sessionId);
-
-      this.sessionManager.delete(sessionId);
-    } catch (error: any) {
-      this.logger.error(`Execution failed: ${error.message}`);
-      const systemConfidence = this.cpn.computeSystemConfidence(sessionId).systemConfidence;
-      const errorOutcome: CognitiveOutcome = {
-        type: CognitiveOutcomeType.FAILED,
-        explanation: `Internal execution engine failure: ${error.message}`,
-        confidence: systemConfidence,
-        timestamp: Date.now(),
-      };
-
-      await this.prisma.executionSession.update({
-        where: { id: sessionId },
-        data: {
-          status: 'FAILED',
-          errorMessage: error.message,
-          completedAt: new Date(),
-          metadata: {
-            ...(session?.metadata as Record<string, any> || {}),
-            cognitiveOutcome: errorOutcome as any,
-          } as any
-        },
-      });
-
-      this.wsGateway.emitToSession(sessionId, 'execution:failed', {
-        reason: 'error',
-        message: error.message,
-        cognitiveOutcome: errorOutcome,
-      });
-
-      this.sessionManager.delete(sessionId);
-    }
+    await this.pipeline.run(sessionId, goal, config, parsedGoal);
   }
 
   private async executeStep(
@@ -962,7 +210,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // Policy check
     const policyCheck = this.policyEngine.checkStep(step);
     if (!policyCheck.allowed) {
-      this.wsGateway.emitToSession(sessionId, 'step:blocked', {
+      this.eventBus.emit(sessionId, 'step:blocked', {
         stepIndex: step.index,
         reason: policyCheck.reason,
       });
@@ -970,7 +218,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     }
 
     // Emit step started
-    this.wsGateway.emitToSession(sessionId, 'step:started', {
+    this.eventBus.emit(sessionId, 'step:started', {
       stepIndex: step.index,
       description: step.description,
     });
@@ -983,7 +231,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
         policyCheck.riskLevel,
       );
       if (!approved) {
-        this.wsGateway.emitToSession(sessionId, 'step:denied', {
+        this.eventBus.emit(sessionId, 'step:denied', {
           stepIndex: step.index,
         });
         return { success: false, error: 'Approval denied by user' };
@@ -1006,7 +254,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     };
 
     if (!result.success) {
-      this.wsGateway.emitToSession(sessionId, 'step:failed', {
+      this.eventBus.emit(sessionId, 'step:failed', {
         stepIndex: step.index,
         error: result.error,
       });
@@ -1037,7 +285,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     ) : null;
 
     if (validation && !validation.completed) {
-      this.wsGateway.emitToSession(sessionId, 'step:validation_failed', {
+      this.eventBus.emit(sessionId, 'step:validation_failed', {
         stepIndex: step.index,
         description: validation.description,
         confidence: validation.confidence,
@@ -1145,7 +393,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     if (isBlockerDetected) {
       this.logger.warn(`Safety Interception Activated! Reason: ${blockerReason}`);
       
-      this.wsGateway.emitToSession(sessionId, 'execution:event', {
+      this.eventBus.emit(sessionId, 'execution:event', {
         type: 'log:warn',
         data: { source: 'SafetyEngine', message: `Safety Auto-Pause: ${blockerReason}` }
       });
@@ -1159,7 +407,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
       const userRiskLevel = blockerReason.toLowerCase().includes('payment') ? 'CRITICAL' : 'HIGH';
       
       this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [${blockerType}]`);
-      this.wsGateway.emitToSession(sessionId, 'execution:event', {
+      this.eventBus.emit(sessionId, 'execution:event', {
         type: 'execution_state_changed',
         data: { sessionId, oldState: 'executing', newState: blockerType.toLowerCase() }
       });
@@ -1171,7 +419,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
       );
 
       if (!approved) {
-        this.wsGateway.emitToSession(sessionId, 'step:denied', { stepIndex: step.index });
+        this.eventBus.emit(sessionId, 'step:denied', { stepIndex: step.index });
         return { success: false, error: 'User denied safety block' };
       }
     }
@@ -1185,7 +433,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // Get current WSO confidence for frontend
     const wso = this.worldState.getState(sessionId);
 
-    this.wsGateway.emitToSession(sessionId, 'step:completed', {
+    this.eventBus.emit(sessionId, 'step:completed', {
       stepIndex: step.index,
       duration: step.index,
       validation: validation?.completed,
@@ -1237,7 +485,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // Gate owns this — derived execution state becomes WAITING_APPROVAL.
     this.sessionManager.setGateState(sessionId, 'WAITING_APPROVAL');
 
-    this.wsGateway.emitToSession(sessionId, 'approval:requested', {
+    this.eventBus.emit(sessionId, 'approval:requested', {
       approvalRequestId: approvalRequest.id,
       stepIndex: -1,
       gate: true,
@@ -1257,7 +505,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
           where: { id: approvalRequest.id },
           data: { status: 'EXPIRED' },
         });
-        this.wsGateway.emitToSession(sessionId, 'approval:expired', {
+        this.eventBus.emit(sessionId, 'approval:expired', {
           approvalRequestId: approvalRequest.id,
         });
         // Treat an expired launch gate as a denial.
@@ -1305,7 +553,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // execution state surfaces WAITING_APPROVAL until the user responds.
     this.sessionManager.setGateState(sessionId, 'WAITING_APPROVAL');
 
-    this.wsGateway.emitToSession(sessionId, 'approval:requested', {
+    this.eventBus.emit(sessionId, 'approval:requested', {
       approvalRequestId: approvalRequest.id,
       stepIndex: step.index,
       riskLevel,
@@ -1323,7 +571,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
           where: { id: approvalRequest.id },
           data: { status: 'EXPIRED' },
         });
-        this.wsGateway.emitToSession(sessionId, 'approval:expired', {
+        this.eventBus.emit(sessionId, 'approval:expired', {
           approvalRequestId: approvalRequest.id,
         });
       }
@@ -1373,7 +621,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     }
 
     const approved = status === 'APPROVED';
-    this.wsGateway.emitToSession(approval.sessionId, 'approval:responded', {
+    this.eventBus.emit(approval.sessionId, 'approval:responded', {
       approvalRequestId,
       status,
     });
@@ -1424,7 +672,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
         data: { plan: updatedPlan as any },
       });
 
-      this.wsGateway.emitToSession(sessionId, 'plan:replanned', {
+      this.eventBus.emit(sessionId, 'plan:replanned', {
         fromStep: failedStepIndex,
         newStepCount: newSteps.length,
       });
@@ -1503,7 +751,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     this.logger.log(`Pausing execution: ${sessionId}`);
     
     this.logger.log(`State Transition for session ${sessionId}: [RUNNING] ──> [PAUSED]`);
-    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+    this.eventBus.emit(sessionId, 'execution:event', {
       type: 'execution_state_changed',
       data: { sessionId, oldState: 'executing', newState: 'paused' }
     });
@@ -1511,14 +759,14 @@ export class ExecutionEngineService implements OnModuleDestroy {
     this.screenshotStreamer.stopStreaming(sessionId);
     // PAUSED is a runtime state; the authority's recompute persists it.
     this.sessionManager.transitionBrowserState(sessionId, 'PAUSED');
-    this.wsGateway.emitToSession(sessionId, 'execution:paused', {});
+    this.eventBus.emit(sessionId, 'execution:paused', {});
   }
 
   async resumeExecution(sessionId: string): Promise<void> {
     this.logger.log(`Resuming execution: ${sessionId}`);
 
     this.logger.log(`State Transition for session ${sessionId}: [PAUSED] ──> [RUNNING]`);
-    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+    this.eventBus.emit(sessionId, 'execution:event', {
       type: 'execution_state_changed',
       data: { sessionId, oldState: 'paused', newState: 'executing' }
     });
@@ -1527,7 +775,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // Resuming a confirmed-alive browser (PAUSED → RUNNING) is not fabrication —
     // the browser already exists. The authority's recompute persists RUNNING.
     this.sessionManager.transitionBrowserState(sessionId, 'RUNNING');
-    this.wsGateway.emitToSession(sessionId, 'execution:resumed', {});
+    this.eventBus.emit(sessionId, 'execution:resumed', {});
   }
 
   async cancelExecution(sessionId: string): Promise<void> {
@@ -1539,7 +787,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
     }
 
     this.logger.log(`State Transition for session ${sessionId}: [RUNNING/PAUSED] ──> [CANCELLED]`);
-    this.wsGateway.emitToSession(sessionId, 'execution:event', {
+    this.eventBus.emit(sessionId, 'execution:event', {
       type: 'execution_state_changed',
       data: { sessionId, oldState: 'executing', newState: 'failed' }
     });
@@ -1560,7 +808,7 @@ export class ExecutionEngineService implements OnModuleDestroy {
       data: { status: 'CANCELLED', completedAt: new Date() },
     });
 
-    this.wsGateway.emitToSession(sessionId, 'execution:cancelled', {});
+    this.eventBus.emit(sessionId, 'execution:cancelled', {});
     this.sessionManager.delete(sessionId);
   }
 

@@ -78,34 +78,35 @@ export class MemoryStoreService {
       } = options;
 
       const queryEmbedding = await this.embeddings.generateEmbedding(query);
+      if (!queryEmbedding.length) return [];
 
-      const memories = type
-        ? await this.prisma.agentMemory.findMany({
-            where: { userId, type },
-            orderBy: { importance: 'desc' },
-            take: limit * 2,
-          })
-        : await this.prisma.agentMemory.findMany({
-            where: { userId },
-            orderBy: { importance: 'desc' },
-            take: limit * 2,
-          });
+      // Use pgvector <=> (cosine distance) via raw SQL for DB-level similarity.
+      // Cast both the stored embedding (float[]) and the query vector to vector type.
+      // cosine_distance = 1 - cosine_similarity, so we filter where distance <= 1 - threshold.
+      const maxDistance = 1 - similarityThreshold;
+      const queryVec = `[${queryEmbedding.join(',')}]`;
 
-      const scored = memories.map((m: any) => {
-        const similarity = this.embeddings.cosineSimilarity(
-          queryEmbedding,
-          (m.embedding as any) || [],
-        );
-        return { memory: m, similarity };
-      });
+      const typeFilter = type
+        ? `AND "type" = '${type}'`
+        : '';
 
-      const filtered = scored
-        .filter((s: any) => s.similarity >= similarityThreshold)
-        .sort((a: any, b: any) => b.similarity - a.similarity)
-        .slice(0, limit)
-        .map((s: any) => s.memory);
+      const rows: any[] = await this.prisma.$queryRawUnsafe(
+        `SELECT * FROM "AgentMemory"
+         WHERE "userId" = $1
+           AND "deletedAt" IS NULL
+           ${typeFilter}
+           AND "embedding" IS NOT NULL
+           AND array_length("embedding", 1) > 0
+           AND "embedding"::vector <=> $2::vector <= $3
+         ORDER BY "embedding"::vector <=> $2::vector ASC
+         LIMIT $4`,
+        userId,
+        queryVec,
+        maxDistance,
+        limit,
+      );
 
-      for (const memory of filtered) {
+      for (const memory of rows) {
         await this.prisma.agentMemory.update({
           where: { id: memory.id },
           data: {
@@ -115,11 +116,59 @@ export class MemoryStoreService {
         });
       }
 
-      return filtered as IAgentMemory[];
+      return rows as IAgentMemory[];
     } catch (error: any) {
-      this.logger.error(`Memory recall failed: ${error.message}`);
-      return [];
+      // Fallback: JS-side cosine similarity if pgvector query fails
+      // (e.g. pgvector extension not installed, or embedding dimension mismatch)
+      this.logger.warn(`pgvector recall failed, falling back to JS similarity: ${error.message}`);
+      return this.recallFallback(userId, query, options);
     }
+  }
+
+  private async recallFallback(
+    userId: string,
+    query: string,
+    options: {
+      type?: AgentMemoryType;
+      limit?: number;
+      similarityThreshold?: number;
+    } = {},
+  ): Promise<IAgentMemory[]> {
+    const { type, limit = 5, similarityThreshold = 0.7 } = options;
+    const queryEmbedding = await this.embeddings.generateEmbedding(query);
+    if (!queryEmbedding.length) return [];
+
+    const memories = type
+      ? await this.prisma.agentMemory.findMany({
+          where: { userId, type, deletedAt: null },
+          orderBy: { importance: 'desc' },
+          take: limit * 4,
+        })
+      : await this.prisma.agentMemory.findMany({
+          where: { userId, deletedAt: null },
+          orderBy: { importance: 'desc' },
+          take: limit * 4,
+        });
+
+    const scored = memories.map((m: any) => ({
+      memory: m,
+      similarity: this.embeddings.cosineSimilarity(queryEmbedding, (m.embedding as any) || []),
+    }));
+
+    const filtered = scored
+      .filter((s: any) => s.similarity >= similarityThreshold)
+      .sort((a: any, b: any) => b.similarity - a.similarity)
+      .slice(0, limit)
+      .map((s: any) => s.memory);
+
+    for (const memory of filtered) {
+      await this.prisma.agentMemory.update({
+        where: { id: memory.id },
+        data: { accessCount: { increment: 1 }, lastAccessedAt: new Date() },
+      });
+    }
+
+    return filtered as IAgentMemory[];
   }
 
   private setWithEviction(key: string, entry: WorkingMemoryEntry): void {

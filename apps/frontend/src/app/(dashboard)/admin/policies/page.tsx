@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, RefreshCw, Loader2, Lock, AlertTriangle,
@@ -80,7 +80,7 @@ export default function AdminPoliciesPage() {
   const [success, setSuccess]   = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
     setError(null);
@@ -93,9 +93,9 @@ export default function AdminPoliciesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, [isAdmin]);
+  useEffect(() => { load(); }, [load]);
 
   const applyQuota = async (userId: string, tier: typeof PLAN_TIERS[number]) => {
     setUpdating(userId);

@@ -20,6 +20,16 @@ import {
   RegisterDtoSchema,
   RefreshTokenDto,
   RefreshTokenDtoSchema,
+  LogoutDto,
+  LogoutDtoSchema,
+  ForgotPasswordDto,
+  ForgotPasswordDtoSchema,
+  ResetPasswordDto,
+  ResetPasswordDtoSchema,
+  VerifyEmailDto,
+  VerifyEmailDtoSchema,
+  RequestEmailVerificationDto,
+  RequestEmailVerificationDtoSchema,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
@@ -140,5 +150,55 @@ export class AuthController {
   @Get('me')
   async getMe(@Req() req: AuthenticatedRequest) {
     return this.authService.getUserProfile(req.user.id);
+  }
+
+  // 🚪 Logout
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(
+    @Body(new ZodValidationPipe(LogoutDtoSchema)) body: LogoutDto,
+  ) {
+    return this.authService.logout(body.refresh_token);
+  }
+
+  // 🔑 Forgot password
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(
+    @Body(new ZodValidationPipe(ForgotPasswordDtoSchema)) body: ForgotPasswordDto,
+  ) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  // 🔐 Reset password
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(
+    @Body(new ZodValidationPipe(ResetPasswordDtoSchema)) body: ResetPasswordDto,
+  ) {
+    return this.authService.resetPassword(body.token, body.password);
+  }
+
+  // 📧 Request email verification
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @Post('request-email-verification')
+  @HttpCode(HttpStatus.OK)
+  async requestEmailVerification(
+    @Body(new ZodValidationPipe(RequestEmailVerificationDtoSchema)) body: RequestEmailVerificationDto,
+  ) {
+    return this.authService.requestEmailVerification(body.email);
+  }
+
+  // ✅ Verify email
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(
+    @Body(new ZodValidationPipe(VerifyEmailDtoSchema)) body: VerifyEmailDto,
+  ) {
+    return this.authService.verifyEmail(body.token);
   }
 }

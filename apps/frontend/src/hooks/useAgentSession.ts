@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useSocket } from '@/providers/SocketProvider';
-import { useAgentStore, AgentPhase } from '@/store/agent.store';
+import { useAgentStore } from '@/store/agent.store';
 import * as agentApi from '@/services/agent.service';
 import type { ScreenshotFrame, ApprovalRequest } from '@/types/agent';
 import { wsService } from '@/services/websocket.service';

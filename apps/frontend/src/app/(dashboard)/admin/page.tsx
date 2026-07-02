@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
   Shield, Users, Activity, Database, RefreshCw, Loader2,
@@ -36,7 +36,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
     setError(null);
@@ -45,7 +45,6 @@ export default function AdminPage() {
         api.get('/admin/stats'),
         api.get('/admin/users?take=20'),
       ]);
-      // Backend returns { users, tasks, sessions, memories, files, auditLogs }
       const s = statsRes.data;
       setStats({
         totalUsers: s.users ?? s.totalUsers ?? 0,
@@ -54,7 +53,6 @@ export default function AdminPage() {
         totalSessions: s.sessions ?? s.totalSessions ?? 0,
         totalMemories: s.memories ?? 0,
       });
-      // Backend returns { data, total, skip, take }
       const raw = usersRes.data;
       setUsers(raw.data ?? raw.users ?? (Array.isArray(raw) ? raw : []));
     } catch (e: any) {
@@ -62,9 +60,9 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin]);
 
-  useEffect(() => { load(); }, [isAdmin]);
+  useEffect(() => { load(); }, [load]);
 
   if (!isAdmin) {
     return (

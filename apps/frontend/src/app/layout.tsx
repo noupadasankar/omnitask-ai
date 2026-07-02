@@ -6,8 +6,6 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Providers } from '@/components/Providers';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { Toaster } from '@/components/ui/toaster';
-import { AuthProvider } from '@/providers/AuthProvider';
-
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
