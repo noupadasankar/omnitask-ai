@@ -14,28 +14,31 @@ export class VoiceController {
   @Post('stt')
   @UseInterceptors(FileInterceptor('audio'))
   async speechToText(
+    @Request() req: any,
     @UploadedFile() file: any,
     @Body(new ZodValidationPipe(SttSchema)) body: SttDto,
   ) {
     if (!file) return { success: false, message: 'No audio file provided' };
-    return this.voice.speechToText(file.buffer, body.language, body.sessionId);
+    return this.voice.speechToText(req.user.id, file.buffer, body.language, body.sessionId);
   }
 
   @Post('tts')
   async textToSpeech(
+    @Request() req: any,
     @Body(new ZodValidationPipe(TtsSchema)) body: TtsDto,
   ) {
-    return this.voice.textToSpeech(body.text, body.voice, body.speed, body.sessionId);
+    return this.voice.textToSpeech(req.user.id, body.text, body.voice, body.speed, body.sessionId);
   }
 
   @Post('command')
   @UseInterceptors(FileInterceptor('audio'))
   async voiceCommand(
+    @Request() req: any,
     @UploadedFile() file: any,
     @Body(new ZodValidationPipe(VoiceCommandSchema)) body: VoiceCommandDto,
   ) {
     if (!file) return { success: false, message: 'No audio file provided' };
-    return this.voice.processVoiceCommand(file.buffer, body.language, body.wakeWordDetected === 'true');
+    return this.voice.processVoiceCommand(req.user.id, file.buffer, body.language, body.wakeWordDetected === 'true');
   }
 
   @Get('history')

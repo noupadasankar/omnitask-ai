@@ -53,7 +53,7 @@ export class VoiceService {
     return this.openaiTtsClient;
   }
 
-  async speechToText(audioBuffer: Buffer, language?: string, sessionId?: string): Promise<STTResult> {
+  async speechToText(userId: string, audioBuffer: Buffer, language?: string, sessionId?: string): Promise<STTResult> {
     const tempFile = path.join(STORAGE_DIR, `stt-${crypto.randomUUID()}.webm`);
     fs.writeFileSync(tempFile, audioBuffer);
 
@@ -74,7 +74,7 @@ export class VoiceService {
       };
 
       await this.prisma.voiceSession.create({
-        data: { userId: 'system', sessionId, inputText: result.text, durationMs: result.durationMs, status: 'completed', wakeWord: this.detectWakeWord(result.text) },
+        data: { userId, sessionId, inputText: result.text, durationMs: result.durationMs, status: 'completed', wakeWord: this.detectWakeWord(result.text) },
       });
 
       return result;
@@ -83,14 +83,14 @@ export class VoiceService {
     }
   }
 
-  async textToSpeech(text: string, voice = 'alloy', speed = 1, sessionId?: string): Promise<TTSResult> {
+  async textToSpeech(userId: string, text: string, voice = 'alloy', speed = 1, sessionId?: string): Promise<TTSResult> {
     const elevenLabsKey = this.config.get<string>('ELEVENLABS_API_KEY');
     const useElevenLabs = !!elevenLabsKey;
 
     if (useElevenLabs) {
-      return this.elevenLabsTTS(text, sessionId);
+      return this.elevenLabsTTS(userId, text, sessionId);
     }
-    return this.openAiTTS(text, voice, speed, sessionId);
+    return this.openAiTTS(userId, text, voice, speed, sessionId);
   }
 
   async streamTTS(text: string, voice = 'alloy'): Promise<ReadableStream> {
@@ -123,8 +123,8 @@ export class VoiceService {
     return mp3.body as unknown as ReadableStream;
   }
 
-  async processVoiceCommand(audioBuffer: Buffer, language?: string, wakeWordDetected?: boolean): Promise<{ transcript: string; command?: string; wakeWord: boolean }> {
-    const stt = await this.speechToText(audioBuffer, language);
+  async processVoiceCommand(userId: string, audioBuffer: Buffer, language?: string, wakeWordDetected?: boolean): Promise<{ transcript: string; command?: string; wakeWord: boolean }> {
+    const stt = await this.speechToText(userId, audioBuffer, language);
     const wakeWord = wakeWordDetected || this.detectWakeWord(stt.text);
     const cleanText = wakeWord ? this.stripWakeWord(stt.text) : stt.text;
 
@@ -149,7 +149,7 @@ export class VoiceService {
     });
   }
 
-  private async elevenLabsTTS(text: string, sessionId?: string): Promise<TTSResult> {
+  private async elevenLabsTTS(userId: string, text: string, sessionId?: string): Promise<TTSResult> {
     const apiKey = this.config.get<string>('ELEVENLABS_API_KEY');
     const voiceId = this.config.get<string>('ELEVENLABS_VOICE_ID') || '21m00Tcm4TlvDq8ikWAM';
     const startTime = Date.now();
@@ -181,13 +181,13 @@ export class VoiceService {
     };
 
     await this.prisma.voiceSession.create({
-      data: { userId: 'system', sessionId, outputText: text, audioUrl: result.audioUrl, durationMs: result.durationMs, status: 'completed' },
+      data: { userId, sessionId, outputText: text, audioUrl: result.audioUrl, durationMs: result.durationMs, status: 'completed' },
     });
 
     return result;
   }
 
-  private async openAiTTS(text: string, voice: string, speed: number, sessionId?: string): Promise<TTSResult> {
+  private async openAiTTS(userId: string, text: string, voice: string, speed: number, sessionId?: string): Promise<TTSResult> {
     const startTime = Date.now();
     const tts = this.getOpenAiTtsClient();
     if (!tts) {
@@ -216,7 +216,7 @@ export class VoiceService {
     };
 
     await this.prisma.voiceSession.create({
-      data: { userId: 'system', sessionId, outputText: text, audioUrl: result.audioUrl, durationMs: result.durationMs, status: 'completed' },
+      data: { userId, sessionId, outputText: text, audioUrl: result.audioUrl, durationMs: result.durationMs, status: 'completed' },
     });
 
     return result;
