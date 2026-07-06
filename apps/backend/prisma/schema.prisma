@@ -1,0 +1,1090 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+enum UserPlan {
+  FREE
+  PRO
+  TEAM
+  ENTERPRISE
+}
+
+enum TaskStatus {
+  QUEUED
+  PLANNING
+  PLANNED
+  AWAITING_APPROVAL
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  COMPENSATED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  DENIED
+  REJECTED
+  EXPIRED
+}
+
+enum MemoryType {
+  EPISODIC
+  SEMANTIC
+  PROCEDURAL
+  WORKING
+}
+
+enum ExecutionSessionStatus {
+  PLANNING
+  WAITING_APPROVAL
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum JobApplicationStatus {
+  QUEUED
+  PROCESSING
+  MATCHED
+  SKIPPED
+  APPLIED
+  FAILED
+  REJECTED
+  INTERVIEW
+  OFFERED
+  PENDING_APPROVAL
+}
+
+enum ProductTrackStatus {
+  MATCHED
+  SKIPPED
+  WATCHING
+  PENDING_APPROVAL
+  PURCHASED
+  FAILED
+}
+
+enum SocialPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum TravelBookingType {
+  FLIGHT
+  HOTEL
+  ITINERARY
+}
+
+enum ArtifactKind {
+  DATA
+  REPORT
+  DOCUMENT
+  SCREENSHOT
+  FILE
+  RESULT_SET
+}
+
+enum TrajectoryGrade {
+  GOLD
+  DEMONSTRATION
+  REJECTED
+  UNGRADED
+}
+
+enum FeedbackRating {
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
+}
+
+// ─── Core Models ────────────────────────────────────────────────────────────────
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  passwordHash        String?
+  name                String?
+  avatarUrl           String?
+  role                Role      @default(USER)
+  plan                UserPlan  @default(FREE)
+  emailVerified       Boolean   @default(false)
+  verificationToken   String?
+  resetToken          String?
+  resetTokenExpiresAt DateTime?
+  mfaSecret           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  sessions          Session[]
+  tasks             Task[]
+  auditLogs         AuditLog[]
+  quota             UserQuota?
+  preferences       UserPreferences?
+  oauthAccounts     OAuthAccount[]
+  files             File[]
+  teamMemberships   TeamMember[]
+  memories          Memory[]
+  agentMemories     AgentMemory[]
+  executionSessions ExecutionSession[]
+}
+
+model UserQuota {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  plan             String   @default("FREE")
+  tasksPerDay      Int      @default(10)
+  concurrentTasks  Int      @default(2)
+  storageBytes     BigInt   @default(536870912)
+  storageUsedBytes BigInt   @default(0)
+  resetAt          DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserPreferences {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  theme     String   @default("dark")
+  language  String   @default("en")
+  timezone  String   @default("UTC")
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  tokenHash    String?
+  refreshToken String?  @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model OAuthAccount {
+  id          String   @id @default(uuid())
+  userId      String
+  provider    String
+  providerUid String
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUid])
+  @@index([userId])
+}
+
+// ─── Task & Execution ───────────────────────────────────────────────────────────
+
+model Task {
+  id              String     @id @default(uuid())
+  userId          String
+  title           String?
+  goal            String?
+  naturalLanguage String?
+  status          TaskStatus @default(QUEUED)
+  taskType        String?
+  trigger         String?
+  agentType       String?
+  riskLevel       RiskLevel  @default(LOW)
+  priority        String?    @default("MEDIUM")
+  shadowMode      Boolean    @default(false)
+
+  parsedGoal Json?
+  context    Json?
+  planHash   String?
+
+  sessionId   String?   @unique
+  scheduleId  String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+
+  result        Json?
+  failureReason String?
+  errorMessage  String?
+  exitReason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              Plan?
+  steps             ExecutionStep[]
+  executions        Execution[]
+  screenshots       Screenshot[]
+  approvals         ApprovalRequest[]
+  files             File[]
+  executionSessions ExecutionSession[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+model Plan {
+  id        String   @id @default(uuid())
+  taskId    String   @unique
+  hash      String?
+  rawOutput String?
+  steps     Json?
+  model     String?
+  tokensUsed Int?
+  validated Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Execution {
+  id            String    @id @default(uuid())
+  taskId        String
+  status        String    @default("RUNNING")
+  attemptNumber Int       @default(1)
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  durationMs    Int?
+  createdAt     DateTime  @default(now())
+
+  task  Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  steps ExecutionStep[]
+
+  @@index([taskId])
+}
+
+model ExecutionStep {
+  id          String     @id @default(uuid())
+  stepIndex   Int
+  stepType    String?
+  action      String
+  input       Json?
+  target      String?
+  value       String?
+  status      StepStatus @default(PENDING)
+  output      Json?
+  errorMessage String?
+  error       String?
+  verifyScore Int?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+
+  taskId      String?
+  executionId String?
+
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  execution Execution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, stepIndex])
+  @@index([taskId])
+  @@index([executionId])
+}
+
+model ExecutionSession {
+  id               String                 @id @default(cuid())
+  taskId           String
+  userId           String
+  status           String                 @default("PLANNING")
+  metadata         Json?
+  plan             Json?
+  errorMessage     String?
+  currentStepIndex Int                    @default(0)
+  totalSteps       Int                    @default(0)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  durationMs       Int?
+  exitReason       String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task              Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  steps             AgentExecutionStep[]
+  screenshots       Screenshot[]
+  approvalRequests  ApprovalRequest[]
+
+  @@index([taskId])
+  @@index([userId])
+}
+
+model AgentExecutionStep {
+  id           String     @id @default(uuid())
+  sessionId    String
+  stepIndex    Int
+  action       String
+  target       String?
+  value        String?
+  description  String?
+  riskLevel    RiskLevel  @default(LOW)
+  status       String     @default("PENDING")
+  result       Json?
+  errorMessage String?
+  visionAnalysis Json?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  durationMs   Int?
+  createdAt    DateTime   @default(now())
+
+  session ExecutionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, stepIndex])
+  @@index([sessionId])
+}
+
+model Screenshot {
+  id         String   @id @default(uuid())
+  taskId     String?
+  stepIndex  Int
+  type       String?
+  url        String?
+  imageUrl   String?
+  base64Thumbnail String?
+  width      Int?
+  height     Int?
+  sessionId  String?
+  timestamp  DateTime @default(now())
+
+  task    Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  session ExecutionSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, stepIndex])
+  @@index([sessionId, stepIndex])
+}
+
+model ApprovalRequest {
+  id            String         @id @default(uuid())
+  taskId        String?
+  sessionId     String?
+  stepIndex     Int
+  riskLevel     RiskLevel
+  description   String
+  actionDetails Json?
+  screenshotUrl String?
+  status        ApprovalStatus @default(PENDING)
+  respondedAt   DateTime?
+  respondedBy   String?
+  deletedAt     DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+
+  task    Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  session ExecutionSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, status])
+  @@index([sessionId])
+}
+
+// ─── Memory ─────────────────────────────────────────────────────────────────────
+
+model Memory {
+  id         String     @id @default(uuid())
+  userId     String
+  content    String
+  summary    String?
+  type       MemoryType @default(EPISODIC)
+  taskId     String?
+  importance Float      @default(0.5)
+  metadata   Json?
+  embedding  Float[]
+  expiresAt  DateTime?
+  deletedAt  DateTime?
+  accessCount Int       @default(0)
+  lastUsedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, createdAt])
+}
+
+model AgentMemory {
+  id             String    @id @default(uuid())
+  userId         String
+  type           String
+  key            String
+  content        String
+  embedding      Float[]
+  importance     Float     @default(0.5)
+  accessCount    Int       @default(0)
+  lastAccessedAt DateTime  @default(now())
+  expiresAt      DateTime?
+  metadata       Json?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, key])
+}
+
+// ─── Training ───────────────────────────────────────────────────────────────────
+
+model TrajectoryRun {
+  id        String          @id @default(uuid())
+  sessionId String          @unique
+  userId    String?
+  goal      String?
+  domain    String?
+  outcome   String?
+  score     Float?
+  steps     Int?
+  grade     TrajectoryGrade @default(UNGRADED)
+  createdAt DateTime        @default(now())
+}
+
+model TrajectoryStep {
+  id            String   @id @default(uuid())
+  sessionId     String
+  stepIndex     Int
+  userId        String?
+  goal          String?
+  domain        String?
+  observation   String?
+  decision      Json?
+  tool          String?
+  actionResult  String?
+  confidence    Float?
+  risk          Float?
+  screenshotRef String?
+  createdAt     DateTime @default(now())
+
+  @@unique([sessionId, stepIndex])
+}
+
+// ─── Infrastructure ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([resource, resourceId])
+}
+
+model LlmUsage {
+  id               String   @id @default(uuid())
+  userId           String?
+  taskId           String?
+  sessionId        String?
+  provider         String?
+  model            String
+  endpoint         String?
+  inputTokens      Int?
+  outputTokens     Int?
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+  costCents        Float?
+  cost             Float?
+  durationMs       Int?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model IdempotencyKey {
+  id         String   @id
+  userId     String?
+  route      String?
+  statusCode Int?
+  response   Json?
+  status     String   @default("completed")
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+}
+
+model Webhook {
+  id              String    @id @default(uuid())
+  userId          String
+  url             String
+  secret          String?
+  events          String[]
+  enabled         Boolean   @default(true)
+  retryCount      Int       @default(3)
+  timeoutMs       Int       @default(10000)
+  lastStatus      String?
+  lastTriggeredAt DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model CredentialVault {
+  id        String    @id @default(uuid())
+  userId    String
+  service   String
+  label     String
+  encrypted Json
+  hints     String?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, service])
+}
+
+model File {
+  id         String   @id @default(uuid())
+  userId     String
+  taskId     String?
+  name       String
+  mimeType   String
+  sizeBytes  BigInt
+  storageKey String
+  bucketName String?
+  checksum   String?
+  tags       String[]
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model Schedule {
+  id             String    @id @default(uuid())
+  userId         String
+  name           String
+  cronExpression String
+  taskTemplate   Json?
+  enabled        Boolean   @default(true)
+  nextRunAt      DateTime?
+  lastRunAt      DateTime?
+  runCount       Int       @default(0)
+  failCount      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([enabled, nextRunAt])
+}
+
+// ─── Billing ────────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String    @id @default(uuid())
+  userId               String    @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 String    @default("FREE")
+  status               String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Invoice {
+  id              String    @id @default(uuid())
+  userId          String
+  stripeInvoiceId String?   @unique
+  amount          Int?
+  currency        String?
+  status          String?
+  paidAt          DateTime?
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  invoicePdf      String?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─── Teams ──────────────────────────────────────────────────────────────────────
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     TeamMember[]
+  invitations TeamInvitation[]
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model TeamInvitation {
+  id         String    @id @default(uuid())
+  teamId     String
+  email      String
+  role       String    @default("MEMBER")
+  token      String    @unique
+  invitedBy  String
+  status     String    @default("PENDING")
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+// ─── GDPR ───────────────────────────────────────────────────────────────────────
+
+model DataExportRequest {
+  id          String    @id @default(uuid())
+  userId      String
+  status      String    @default("pending")
+  format      String?
+  downloadUrl String?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  expiresAt   DateTime?
+}
+
+model DataDeletionRequest {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  reason      String?
+  status      String   @default("pending")
+  requestedAt DateTime @default(now())
+}
+
+model DataRetentionPolicy {
+  id                    String @id @default(uuid())
+  maxAuditLogAgeDays    Int    @default(365)
+  maxSessionAgeDays     Int    @default(90)
+  maxMemoryAgeDays      Int    @default(365)
+  maxExportFileAgeDays  Int    @default(30)
+  anonymizeAfterDays    Int    @default(365)
+}
+
+// ─── Domain: Jobs ───────────────────────────────────────────────────────────────
+
+model JobApplication {
+  id               String               @id @default(uuid())
+  userId           String
+  portal           String
+  externalJobId    String
+  title            String
+  company          String?
+  location         String?
+  url              String?
+  score            Float?
+  matchReasons     Json?
+  status           JobApplicationStatus @default(MATCHED)
+  appliedAt        DateTime?
+  sessionId        String?
+  errorMessage     String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([userId, portal, externalJobId])
+  @@index([userId, status])
+}
+
+model JobPreference {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  portals      String[]
+  roles        String[]
+  locations    String[]
+  skills       String[]
+  minSalary    Int?
+  maxDailyApps Int?     @default(10)
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Domain: Shopping ───────────────────────────────────────────────────────────
+
+model TrackedProduct {
+  id                String             @id @default(uuid())
+  userId            String
+  site              String
+  externalProductId String
+  title             String
+  brand             String?
+  url               String?
+  currency          String             @default("INR")
+  lastPrice         Float?
+  targetPrice       Float?
+  rating            Float?
+  score             Float?
+  matchReasons      Json?
+  priceHistory      Json?
+  status            ProductTrackStatus @default(MATCHED)
+  sessionId         String?
+  purchasedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([userId, site, externalProductId])
+  @@index([userId, status])
+}
+
+model ShoppingPreference {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  categories     String[]
+  brands         String[]
+  maxBudget      Float?
+  currency       String   @default("INR")
+  autoApprove    Boolean  @default(false)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ─── Domain: Travel ─────────────────────────────────────────────────────────────
+
+model TravelBooking {
+  id             String            @id @default(uuid())
+  userId         String
+  type           TravelBookingType
+  origin         String?
+  destination    String?
+  departDate     DateTime?
+  returnDate     DateTime?
+  budget         Float?
+  status         String            @default("FOUND")
+  results        Json?
+  selectedOption Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([userId])
+}
+
+// ─── Domain: Food ───────────────────────────────────────────────────────────────
+
+model FoodOrder {
+  id             String   @id @default(uuid())
+  userId         String
+  platform       String
+  restaurantName String
+  items          Json?
+  totalAmount    Float?
+  status         String   @default("ORDERED")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ─── Domain: Social ─────────────────────────────────────────────────────────────
+
+model SocialPost {
+  id          String           @id @default(uuid())
+  userId      String
+  platform    String
+  content     String
+  status      SocialPostStatus @default(DRAFT)
+  scheduledAt DateTime?
+  publishedAt DateTime?
+  sessionId   String?
+  likes       Int              @default(0)
+  shares      Int              @default(0)
+  comments    Int              @default(0)
+  views       Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId, status])
+}
+
+// ─── Domain: Email ──────────────────────────────────────────────────────────────
+
+model EmailAccount {
+  id           String    @id @default(uuid())
+  userId       String
+  provider     String
+  email        String
+  accessToken  String?
+  refreshToken String?
+  smtpHost     String?
+  smtpPort     Int?
+  imapHost     String?
+  imapPort     Int?
+  useTls       Boolean?
+  isActive     Boolean   @default(true)
+  isPrimary    Boolean   @default(false)
+  lastSyncedAt DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  messages EmailMessage[]
+
+  @@index([userId])
+}
+
+model EmailMessage {
+  id        String   @id @default(uuid())
+  accountId String
+  userId    String
+  messageId String?
+  from      String?
+  to        String[]
+  cc        String[]
+  bcc       String[]
+  subject   String?
+  bodyText  String?
+  bodyHtml  String?
+  labels    String[]
+  category  String?
+  isRead    Boolean  @default(false)
+  isStarred Boolean  @default(false)
+  receivedAt DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  account EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([userId])
+}
+
+model ScheduledEmail {
+  id          String   @id @default(uuid())
+  userId      String
+  accountId   String
+  to          String[]
+  cc          String[] @default([])
+  bcc         String[] @default([])
+  subject     String
+  body        String
+  bodyHtml    String?
+  scheduledAt DateTime
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([scheduledAt, status])
+}
+
+// ─── Domain: Calendar ───────────────────────────────────────────────────────────
+
+model CalendarAccount {
+  id           String    @id @default(uuid())
+  userId       String
+  provider     String
+  email        String?
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  calendarName String?
+  timezone     String?   @default("UTC")
+  isPrimary    Boolean   @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  events CalendarEvent[]
+
+  @@index([userId])
+}
+
+model CalendarEvent {
+  id              String    @id @default(uuid())
+  accountId       String
+  userId          String
+  externalId      String?
+  title           String
+  description     String?
+  location        String?
+  startTime       DateTime
+  endTime         DateTime
+  isAllDay        Boolean   @default(false)
+  timezone        String?
+  attendees       Json?
+  travelBufferMin Int?
+  source          String?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  account CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([userId, startTime])
+}
+
+// ─── Domain: Media ──────────────────────────────────────────────────────────────
+
+model MediaSession {
+  id        String   @id @default(uuid())
+  userId    String
+  provider  String
+  action    String
+  trackId   String?
+  status    String   @default("completed")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── Domain: Voice ──────────────────────────────────────────────────────────────
+
+model VoiceSession {
+  id         String    @id @default(uuid())
+  userId     String
+  sessionId  String?
+  inputText  String?
+  outputText String?
+  audioUrl   String?
+  durationMs Int?
+  status     String    @default("completed")
+  wakeWord   Boolean?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ─── Feedback & A/B Testing ─────────────────────────────────────────────────────
+
+model TaskFeedback {
+  id        String         @id @default(uuid())
+  userId    String
+  taskId    String?
+  sessionId String?
+  rating    FeedbackRating
+  comment   String?
+  category  String?
+  createdAt DateTime       @default(now())
+
+  @@index([userId])
+}
+
+model StrategyTest {
+  id           String    @id @default(uuid())
+  userId       String
+  name         String
+  description  String?
+  strategyA    Json
+  strategyB    Json
+  status       String    @default("active")
+  winner       String?
+  totalRunsA   Int       @default(0)
+  totalRunsB   Int       @default(0)
+  successA     Int       @default(0)
+  successB     Int       @default(0)
+  avgDurationA Float     @default(0)
+  avgDurationB Float     @default(0)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+// ─── Digital Twin ───────────────────────────────────────────────────────────────
+
+model Artifact {
+  id         String       @id @default(uuid())
+  userId     String
+  sessionId  String?
+  agent      String?
+  kind       ArtifactKind @default(DATA)
+  title      String
+  mimeType   String       @default("application/json")
+  text       String?
+  data       Json?
+  storageKey String?
+  tags       String[]
+  version    Int          @default(1)
+  createdAt  DateTime     @default(now())
+
+  @@index([userId, kind])
+  @@index([userId, title])
+}
+
+// ─── Places ─────────────────────────────────────────────────────────────────────
+
+model PlaceBooking {
+  id          String   @id @default(uuid())
+  userId      String
+  placeId     String
+  placeName   String
+  bookingTime DateTime
+  partySize   Int?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
