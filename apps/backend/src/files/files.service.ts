@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFileDto, UpdateFileDto } from './dto/file.dto';
 import { createHash, randomUUID } from 'crypto';
+<<<<<<< HEAD
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -12,11 +13,14 @@ interface UploadedFile {
   size: number;
   mimetype: string;
 }
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 @Injectable()
 export class FilesService {
   constructor(private prisma: PrismaService) {}
 
+<<<<<<< HEAD
   /** Persist an uploaded file's bytes to disk and record it, scoped to the owning user. */
   async uploadAndCreate(userId: string, file: UploadedFile, taskId?: string) {
     const uploadsDir = path.join(__dirname, '../../uploads', userId);
@@ -42,6 +46,8 @@ export class FilesService {
     });
   }
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   async create(userId: string, createFileDto: CreateFileDto) {
     const storageKey = `${userId}/${randomUUID()}-${createFileDto.name}`;
     const checksum = createHash('sha256').update(storageKey).digest('hex');

@@ -4,6 +4,7 @@
 
 # OmniTask AI
 
+<<<<<<< HEAD
 ### _Cognitive Automation Platform_
 
 **Describe a goal in plain English. AI agents open a real browser, execute every step, and report back — live.**
@@ -16,6 +17,19 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/noupadasankar/omnitask-ai/issues)
 
 [Report Bug](https://github.com/noupadasankar/omnitask-ai/issues) · [Request Feature](https://github.com/noupadasankar/omnitask-ai/issues)
+=======
+### _Personal Autonomous Agent Workforce_
+
+**Give it a task in plain English. It opens the browser, does the work, stores everything, and reports back.**
+
+[![CI](https://github.com/noupadasankar/omnitask-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/noupadasankar/omnitask-ai/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20-green.svg)](https://nodejs.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/noupadasankar/omnitask-ai/blob/main/CONTRIBUTING.md)
+
+[Live Demo](https://omnitask.ai) · [Documentation](https://github.com/noupadasankar/omnitask-ai/blob/main/docs/README.md) · [Report Bug](https://github.com/noupadasankar/omnitask-ai/issues) · [Request Feature](https://github.com/noupadasankar/omnitask-ai/issues)
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 </div>
 
@@ -23,14 +37,21 @@
 
 ## What Is OmniTask AI?
 
+<<<<<<< HEAD
 OmniTask AI is a **production-grade autonomous agent platform** where you type a natural language goal and coordinated AI agents execute it in a real Chromium browser — navigating websites, filling forms, extracting data, streaming live screenshots, and asking permission before risky actions.
 
 It ships with **12 domain agents** (job search, food ordering, shopping, travel, email, social media, finance, calendar, research, booking, media, file management), a **Cognitive OS** that detects when agents drift off-task, and a **memory system** that learns from every execution.
+=======
+OmniTask AI is a **production-grade autonomous agent platform** where you type a natural language command and a browser agent executes it completely — navigating websites, filling forms, extracting data, downloading files, and reporting results in real time.
+
+Think of it as hiring a tireless digital employee who never sleeps, never makes typos, remembers everything it has ever done, and asks permission before taking risky actions.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ```
 You type:  "Apply to the top 5 remote TypeScript jobs on LinkedIn"
 
 Agent does:
+<<<<<<< HEAD
   1. Parses your goal → routes to the Job domain agent
   2. Loads your resume + preferences from memory
   3. Opens LinkedIn Jobs in a real browser
@@ -42,10 +63,23 @@ Agent does:
   9. Reports: "5 applications submitted" with links and match scores
 
 Total time: ~4 minutes. Your involvement: approval clicks.
+=======
+  1. Opens LinkedIn Jobs
+  2. Searches "TypeScript remote"
+  3. Filters by "Remote" and "Last 24 hours"
+  4. For each job: reads description → generates tailored answer → clicks Apply
+  5. Detects form submission → asks your approval (shows screenshot)
+  6. You click Approve → agent submits
+  7. Saves confirmation screenshots to your File Vault
+  8. Reports: "5 applications submitted" with links to each job
+
+Total time: ~4 minutes. Your involvement: 30 seconds (one approval click).
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 ```
 
 ---
 
+<<<<<<< HEAD
 ## Features
 
 | Feature | Description |
@@ -67,12 +101,31 @@ Total time: ~4 minutes. Your involvement: approval clicks.
 | **Credential Vault** | AES-256-GCM encrypted credential storage (PBKDF2, 600K iterations) |
 | **Observability** | Prometheus metrics, Grafana dashboards, OpenTelemetry traces, Sentry error tracking |
 | **GDPR Compliance** | Data export, deletion requests, retention policies, soft deletes |
+=======
+## Features at a Glance
+
+| Feature                          | Description                                                               |
+| -------------------------------- | ------------------------------------------------------------------------- |
+| 🧠 **Natural Language Planning** | GPT-4o converts plain English to a validated, structured execution plan   |
+| 🌐 **Browser Automation**        | Playwright executes any web task — navigate, click, type, extract, upload |
+| 👁️ **Shadow Mode**               | Simulate the full plan dry-run before a single real click happens         |
+| 🔐 **Approval Gates**            | CAPTCHA, login pages, and payment flows pause and ask for your approval   |
+| 🧩 **Multi-Agent System**        | BrowserAgent, APIAgent, FileAgent, ResearchAgent, SupervisorAgent         |
+| 🧬 **Memory System**             | Semantic search over past tasks — "do what I did last week for invoices"  |
+| ⚡ **Skill Library**             | Repeated workflows auto-promote to one-click reusable automations         |
+| 📁 **File Vault**                | Every screenshot, PDF, CSV, download — stored, versioned, searchable      |
+| 📊 **Live Dashboard**            | Real-time WebSocket logs, React Flow execution graph, replay scrubber     |
+| 🗓️ **Scheduling**                | Cron-based recurring tasks — daily job search, weekly reports             |
+| 🔒 **Policy Engine**             | Per-domain allow/deny/require-approval rules you control                  |
+| 📈 **Observability**             | Prometheus metrics, structured logs, OpenTelemetry traces                 |
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ---
 
 ## Tech Stack
 
 ```
+<<<<<<< HEAD
 ┌──────────────────────────────────────────────────────────────────────┐
 │  FRONTEND      Next.js 14  ·  Tailwind  ·  Radix UI  ·  Zustand    │
 │  BACKEND       NestJS 11 (TypeScript)  ·  Express adapter           │
@@ -86,6 +139,20 @@ Total time: ~4 minutes. Your involvement: approval clicks.
 │  MONITORING    Prometheus  ·  Grafana  ·  OpenTelemetry  ·  Sentry  │
 │  INFRA         Docker Compose  ·  Nginx + Let's Encrypt SSL         │
 └──────────────────────────────────────────────────────────────────────┘
+=======
+┌─────────────────────────────────────────────────────────────────┐
+│  FRONTEND      Next.js 14 + Tailwind + shadcn/ui + React Flow  │
+│  BACKEND       NestJS (TypeScript) + Fastify adapter            │
+│  AUTOMATION    Playwright (Chromium) — isolated per-user        │
+│  AI            OpenAI GPT-4o (planning + repair + embeddings)   │
+│  QUEUE         BullMQ on Redis — async execution + retries      │
+│  DATABASE      PostgreSQL 16 + pgvector (memory/embeddings)     │
+│  STORAGE       S3-compatible — MinIO (dev) / R2 (prod)         │
+│  REALTIME      Socket.io — live logs, approvals, updates        │
+│  MONITORING    Prometheus + Grafana + Loki                      │
+│  INFRA         Docker Compose → VPS → Kubernetes               │
+└─────────────────────────────────────────────────────────────────┘
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 ```
 
 ---
@@ -93,6 +160,7 @@ Total time: ~4 minutes. Your involvement: approval clicks.
 ## Project Structure
 
 ```
+<<<<<<< HEAD
 omnitask-ai/                        ← pnpm + Turborepo monorepo
 ├── apps/
 │   ├── backend/                    ← NestJS API server (42 modules, port 4000)
@@ -146,6 +214,23 @@ omnitask-ai/                        ← pnpm + Turborepo monorepo
 └── scripts/
     ├── dev.mjs                     ← One-command stack launcher
     └── deploy.sh                   ← Production deploy script
+=======
+omnitask-ai/                    ← Turborepo monorepo
+├── apps/
+│   ├── backend/                ← NestJS API (12 domain modules)
+│   ├── frontend/               ← Next.js 14 dashboard
+│   ├── worker/                 ← Standalone NestJS queue worker process
+│   └── browser-py/             ← Python Playwright browser automation service
+├── packages/
+│   ├── shared-types/           ← Shared TypeScript types (no drift)
+│   └── config/                 ← Shared ESLint/TS configs
+├── infra/
+│   ├── docker/                 ← Postgres/Redis/MinIO configs
+│   ├── nginx/                  ← Reverse proxy config
+│   ├── k8s/                    ← Kubernetes manifests (Phase 5+)
+│   └── monitoring/             ← Prometheus/Grafana/Loki configs
+└── scripts/                    ← Multi-platform orchestration & helper scripts
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 ```
 
 ---
@@ -155,16 +240,26 @@ omnitask-ai/                        ← pnpm + Turborepo monorepo
 ### Prerequisites
 
 - **Node.js 20+** — [nodejs.org](https://nodejs.org)
+<<<<<<< HEAD
 - **pnpm 8+** — `npm install -g pnpm`
 - **Python 3.10+** — [python.org](https://python.org)
 - **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop)
 - **Groq API key** (free) — [console.groq.com](https://console.groq.com) — or OpenAI/OpenRouter key
 
 ### 1. Clone and configure
+=======
+- **Python 3.10+** — [python.org](https://python.org) (Required for the `browser-py` python browser automation engine)
+- **Docker Desktop** — [docker.com](https://www.docker.com/products/docker-desktop)
+- **pnpm 8+** — `npm install -g pnpm`
+- **OpenAI API key** — [platform.openai.com](https://platform.openai.com/api-keys)
+
+### 1. Clone
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ```bash
 git clone https://github.com/noupadasankar/omnitask-ai.git
 cd omnitask-ai
+<<<<<<< HEAD
 cp .env.example .env
 ```
 
@@ -260,6 +355,98 @@ PostgreSQL (tasks, plans, executions, memory, audit logs)
 8. **Step execution** — Each step: CPN confidence gate → browser action → vision validation → self-healing on failure
 9. **Verification** — VerifierAgent scores result 0-100 (≥70 accept, 50-69 retry, <50 replan)
 10. **Memory** — Stores execution episode, updates strategy + preference learning
+=======
+```
+
+### 2. Configure
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set at minimum:
+
+```env
+OPENAI_API_KEY=sk-proj-...
+JWT_SECRET=<run: openssl rand -base64 64>
+JWT_REFRESH_SECRET=<run: openssl rand -base64 64>
+```
+
+### 3. Spin Up Infrastructure
+
+```bash
+pnpm infra
+```
+This starts PostgreSQL and Redis in Docker containers in the background.
+
+### 4. Run Automated Setup
+
+```bash
+pnpm setup
+```
+This command automatically installs all Node/Python dependencies, installs Playwright Chromium browsers, and pushes the database schema.
+
+### 5. Start the Stack
+
+```bash
+pnpm stack
+```
+This single orchestration command starts the dev databases, hot-reloads the frontend, backend, and standalone worker, and launches the `browser-py` engine concurrently under one process window.
+
+### 6. Open the Dashboard
+
+| Service           | URL                                                |
+| ----------------- | -------------------------------------------------- |
+| **App**           | http://localhost:3000                              |
+| **API**           | http://localhost:4000/api/v1                       |
+| **Swagger**       | http://localhost:4000/api/docs                     |
+| **MinIO Console** | http://localhost:9001 (If MinIO is configured in production) |
+
+### 7. Run Your First Task
+
+1. Register at http://localhost:3000
+2. Press **⌘K** → type your task
+3. Enable **Shadow Mode** to preview first
+4. Hit **Run Task** and watch it execute live
+
+---
+
+## Development Commands
+
+Run commands from the repository root:
+
+```bash
+# Start entire local development stack (database infra + backend + frontend + worker + browser-py)
+pnpm stack
+
+# Spin up only the DB infrastructure (Postgres + Redis)
+pnpm infra
+
+# Stop the DB infrastructure
+pnpm infra:down
+
+# Run the full setup (Node/Python installs + DB schema sync)
+pnpm setup
+
+# Run linting across all packages
+pnpm lint
+
+# Run all unit and integration tests
+pnpm test
+
+# Push database schema changes directly
+pnpm db:push
+
+# Create a database migration
+pnpm db:migrate
+
+# Open Prisma Studio (database GUI)
+pnpm db:studio
+
+# Generate Prisma client after schema changes
+pnpm db:generate
+```
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ---
 
@@ -267,6 +454,7 @@ PostgreSQL (tasks, plans, executions, memory, audit logs)
 
 ### Required
 
+<<<<<<< HEAD
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
@@ -295,11 +483,31 @@ PostgreSQL (tasks, plans, executions, memory, audit logs)
 | `SENDGRID_API_KEY` | — | Email sending |
 | `SENTRY_DSN` | — | Error tracking |
 | `LOG_LEVEL` | `info` | `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
+=======
+| Variable             | Description                         |
+| -------------------- | ----------------------------------- |
+| `OPENAI_API_KEY`     | OpenAI API key for GPT-4o           |
+| `JWT_SECRET`         | Access token secret (min 32 chars)  |
+| `JWT_REFRESH_SECRET` | Refresh token secret (min 32 chars) |
+
+### Optional (have defaults)
+
+| Variable             | Default                 | Description                |
+| -------------------- | ----------------------- | -------------------------- |
+| `PORT`               | `4000`                  | Backend port               |
+| `POSTGRES_USER`      | `omnitask`              | DB username                |
+| `POSTGRES_PASSWORD`  | `omnitask_secret`       | DB password                |
+| `REDIS_URL`          | `redis://redis:6379`    | Redis URL                  |
+| `S3_ENDPOINT`        | `http://minio:9000`     | S3 endpoint                |
+| `WORKER_CONCURRENCY` | `3`                     | Concurrent browser workers |
+| `FRONTEND_URL`       | `http://localhost:3000` | For CORS                   |
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 Full reference in `.env.example`.
 
 ---
 
+<<<<<<< HEAD
 ## Development Commands
 
 ```bash
@@ -385,17 +593,80 @@ This system acts as the user — it browses, clicks, fills forms, and submits on
 - **Security headers** — Helmet, HSTS, X-Frame-Options, X-Content-Type-Options
 
 Never commit `.env` files. All credentials must go through the vault or environment variables.
+=======
+## Architecture
+
+OmniTask AI is built as a **modular monolith** (not microservices) with separately deployed worker processes. The agent engine utilizes a Python-based Playwright runtime (`browser-py`) to control the browser and stream live execution frames to the user, with a fallback to NestJS in-process Puppeteer.
+
+```
+User (Next.js) ──▶ NestJS API ──▶ Redis List (py:jobs) ──▶ browser-py (Playwright)
+                      │                                        │
+                      │                                        ▼
+                 PostgreSQL (pgvector)                    Socket.io / Redis Events
+                      │                                        │
+                      ▼                                        ▼
+                  User Logs ◀──────────────────────────── User Dashboard (Live)
+```
+
+For a comprehensive architecture overview, see **[MAIN-README.md#architecture-overview](MAIN-README.md#architecture-overview)**.
+
+---
+
+## Build Phases
+
+| Phase                | Weeks | Milestone                                    |
+| -------------------- | ----- | -------------------------------------------- |
+| **1 — Foundation**   | 1–3   | Auth + Tasks + Browser + WebSocket live logs |
+| **2 — Intelligence** | 4–6   | LLM planning + Approvals + Shadow Mode       |
+| **3 — Resilience**   | 7–9   | Retry/recovery + Policy engine + Multi-agent |
+| **4 — Memory**       | 10–12 | pgvector + Skills + Replay scrubber          |
+| **5 — Launch**       | 13–16 | Scheduling + Billing + K8s + Beta            |
+
+See **[MAIN-README.md#roadmap](MAIN-README.md#roadmap)** for the full build checklist.
+
+---
+
+## Documentation
+
+All comprehensive documentation is consolidated in **[MAIN-README.md](MAIN-README.md)**. You can refer to it for:
+- **[Architecture Deep Dive](MAIN-README.md#architecture-overview)**: System design, data flow, agent orchestrator, and database schemas.
+- **[API Reference](MAIN-README.md#api-reference)**: Full authentication, tasks, memory, billing, and webhook REST endpoints.
+- **[WebSocket Events](MAIN-README.md#websocket-events)**: Live telemetry, log streaming, and agent feedback schemas.
+- **[Deployment Guides](MAIN-README.md#deployment)**: Docker Compose, production SSL setup with Nginx/Certbot, and Kubernetes setups.
+- **[Security Architecture](MAIN-README.md#security-architecture)**: Policy engines, sandboxing, and data encryption policies.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ---
 
 ## Contributing
 
+<<<<<<< HEAD
 Contributions are welcome. Before contributing:
 
 1. Check existing issues before opening a new one
 2. Read `CLAUDE.md` for architecture details and conventions
 3. Run `npx tsc --noEmit` — zero errors before submitting a PR
 4. Run tests — test count must not decrease
+=======
+This is a solo developer project. Community contributions are welcome in later phases.
+
+Before contributing:
+
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md) — code style, PR process
+2. Read **[MAIN-README.md#architecture-overview](MAIN-README.md#architecture-overview)** — understand the architecture before changing how it behaves
+3. Check existing issues before opening a new one
+
+---
+
+## Security
+
+This system acts as the user — it can browse, click, fill forms, and submit on your behalf. Security is not optional.
+
+- See [SECURITY.md](SECURITY.md) for the security model and vulnerability reporting
+- Never commit `.env` files
+- All credentials go through the Credential Vault, never stored in plaintext
+- Agent actions go through the Policy Engine before execution
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ---
 
@@ -409,7 +680,11 @@ See [LICENSE](LICENSE) for full text.
 
 ## Acknowledgments
 
+<<<<<<< HEAD
 Built with: [NestJS](https://nestjs.com) · [Next.js](https://nextjs.org) · [Playwright](https://playwright.dev) · [Prisma](https://prisma.io) · [BullMQ](https://bullmq.io) · [pgvector](https://github.com/pgvector/pgvector) · [Groq](https://groq.com) · [Radix UI](https://radix-ui.com) · [Tailwind CSS](https://tailwindcss.com) · [Socket.IO](https://socket.io) · [Turborepo](https://turbo.build)
+=======
+Built with: NestJS · Next.js · Playwright · BullMQ · pgvector · OpenAI · shadcn/ui · React Flow · Turborepo
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 ---
 
@@ -417,4 +692,12 @@ Built with: [NestJS](https://nestjs.com) · [Next.js](https://nextjs.org) · [Pl
 
 **Built with obsession by a solo developer who needed this tool to exist.**
 
+<<<<<<< HEAD
 </div>
+=======
+⭐ Star this repo if it helps you · 🐛 [Report bugs](https://github.com/noupadasankar/omnitask-ai/issues) · 💡 [Request features](https://github.com/noupadasankar/omnitask-ai/issues)
+
+</div>
+
+
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835

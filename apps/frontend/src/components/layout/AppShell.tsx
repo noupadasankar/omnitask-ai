@@ -1,6 +1,9 @@
 'use client';
 
+<<<<<<< HEAD
 import { usePathname } from 'next/navigation';
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { WsReconnectBanner } from './WsReconnectBanner';
@@ -12,8 +15,11 @@ export function AppShell({
 }: {
   children: React.ReactNode;
 }) {
+<<<<<<< HEAD
   const pathname = usePathname();
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   return (
     <SocketProvider>
       <div className="relative flex h-screen w-screen overflow-hidden bg-[#0A0A0B] text-white">
@@ -30,8 +36,13 @@ export function AppShell({
 
         {/* MAIN CONTAINER - Header + Scrollable Content */}
         <div className="relative z-10 flex flex-1 flex-col h-screen overflow-hidden">
+<<<<<<< HEAD
           {/* TOPBAR - Fixed at top of main container (hidden on the Dashboard's own hero layout) */}
           {pathname !== '/dashboard' && <Topbar />}
+=======
+          {/* TOPBAR - Fixed at top of main container */}
+          <Topbar />
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
           {/* WS reconnect notification — slides in on disconnect */}
           <WsReconnectBanner />

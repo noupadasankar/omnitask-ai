@@ -612,7 +612,11 @@ export class ExecutionEngineService implements OnModuleDestroy {
     // Clear the gate. Execution state is DERIVED: if a live browser exists it
     // resolves to RUNNING; pre-launch it stays in the PLANNING family. We never
     // write RUNNING directly here — that would be the orchestrator lying.
+<<<<<<< HEAD
     this.sessionManager.setGateState(approval.sessionId!, 'CLEARED');
+=======
+    this.sessionManager.setGateState(approval.sessionId, 'CLEARED');
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
     const timeout = this.approvalTimeouts.get(approvalRequestId);
     if (timeout) {
@@ -621,7 +625,11 @@ export class ExecutionEngineService implements OnModuleDestroy {
     }
 
     const approved = status === 'APPROVED';
+<<<<<<< HEAD
     this.eventBus.emit(approval.sessionId!, 'approval:responded', {
+=======
+    this.eventBus.emit(approval.sessionId, 'approval:responded', {
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       approvalRequestId,
       status,
     });

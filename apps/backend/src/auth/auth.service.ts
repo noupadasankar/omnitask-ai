@@ -58,12 +58,17 @@ export class AuthService {
       where: { email },
     });
 
+<<<<<<< HEAD
     if (!user) {
+=======
+    if (!user || !user.passwordHash) {
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       // Equalize timing with the wrong-password path to prevent user enumeration.
       await bcrypt.compare(password, AuthService.DUMMY_PASSWORD_HASH);
       return null;
     }
 
+<<<<<<< HEAD
     if (!user.passwordHash) {
       // Account was created via OAuth and never set a password — bcrypt.compare
       // would always fail here, so surface a message that actually helps
@@ -74,6 +79,8 @@ export class AuthService {
       );
     }
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     const passwordValid = await bcrypt.compare(
       password,
       user.passwordHash,

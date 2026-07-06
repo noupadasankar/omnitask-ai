@@ -17,7 +17,10 @@ import sys
 from pathlib import Path
 
 import redis.asyncio as redis
+<<<<<<< HEAD
 from redis.exceptions import TimeoutError as RedisTimeoutError
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 from playwright.async_api import async_playwright
 
 from events import EventPublisher, PY_JOB_LIST, PY_ALIVE_KEY
@@ -209,6 +212,7 @@ def _redis_client() -> "redis.Redis":
     host = os.environ.get("REDIS_HOST", "localhost")
     port = int(os.environ.get("REDIS_PORT", "6379"))
     password = os.environ.get("REDIS_PASSWORD") or None
+<<<<<<< HEAD
     max_conn = int(os.environ.get("REDIS_MAX_CONNECTIONS", "50"))
     log.info("Redis → %s:%d  auth=%s  pool=%d", host, port, bool(password), max_conn)
     # BlockingConnectionPool: the single shared client serves the blocking BRPOP
@@ -217,16 +221,24 @@ def _redis_client() -> "redis.Redis":
     # aborted the apply mid-gate). A blocking pool instead waits briefly for a
     # free connection, so short commands never crash the run.
     pool = redis.BlockingConnectionPool(
+=======
+    log.info("Redis → %s:%d  auth=%s", host, port, bool(password))
+    return redis.Redis(
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         host=host,
         port=port,
         password=password,
         decode_responses=True,
         socket_keepalive=True,
         health_check_interval=30,
+<<<<<<< HEAD
         max_connections=max_conn,
         timeout=30,  # seconds to wait for a free connection before erroring
     )
     return redis.Redis(connection_pool=pool)
+=======
+    )
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 
 async def _heartbeat(client: "redis.Redis") -> None:
@@ -341,7 +353,11 @@ async def main() -> None:
             while True:
                 try:
                     item = await client.brpop(PY_JOB_LIST, timeout=5)
+<<<<<<< HEAD
                 except (TimeoutError, RedisTimeoutError):
+=======
+                except TimeoutError:
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
                     # Expected: the server-side 5-second BRPOP window elapsed with no
                     # job. redis-py raises TimeoutError when the socket read times out
                     # before the server returns. Treat it as an empty poll and retry.

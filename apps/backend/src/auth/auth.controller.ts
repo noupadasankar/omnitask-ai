@@ -116,12 +116,32 @@ export class AuthController {
         req.user,
       );
 
+<<<<<<< HEAD
       // The frontend is Bearer-token based (stores token/refreshToken in
       // localStorage, never reads cookies) — hand tokens back via the
       // callback URL so /auth/callback can persist them the same way
       // email/password login does.
       const params = new URLSearchParams({ token: accessToken, refreshToken });
       return res.redirect(`${this.frontendUrl}/auth/callback?${params.toString()}`);
+=======
+      res.cookie('access_token', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 1000, // 1 hour
+      });
+
+      res.cookie('refresh_token', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      return res.redirect(`${this.frontendUrl}/auth/callback`);
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     } catch {
       return res.redirect(`${this.frontendUrl}/login?error=oauth_failed`);
     }

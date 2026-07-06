@@ -1,0 +1,48 @@
+# Core Dependencies
+playwright==1.41.0
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Resume Parsing
+PyPDF2==3.0.1
+python-docx==1.1.0
+pdfplumber==0.10.3
+
+# Web Scraping & HTTP
+requests==2.31.0
+beautifulsoup4==4.12.2
+
+# Data Handling
+pandas==2.1.4
+
+# Logging
+colorlog==6.8.0
+
+# Local cognitive engine — NO cloud LLM, NO API key. Two interchangeable
+# backends sit behind LocalLLMClient (pick via COG_LLM_BACKEND=auto|ollama|llamacpp):
+#
+# (A) Ollama server over loopback HTTP (stdlib urllib — no SDK to install here):
+#     1) install Ollama (https://ollama.com)
+#     2) ollama pull qwen2.5:7b-instruct      # reasoning  (OLLAMA_MODEL)
+#     3) ollama pull qwen2.5vl:7b             # vision     (OLLAMA_VISION_MODEL)
+#     4) ollama pull nomic-embed-text         # embeddings (OLLAMA_EMBED_MODEL)
+#
+# (B) Fully in-process llama.cpp (no server, no HTTP, single process). Optional —
+#     only needed if you set COG_LLM_BACKEND=llamacpp (or =auto with a GGUF path):
+#     pip install llama-cpp-python          # CPU; see project docs for CUDA/Metal wheels
+#     then set LLAMACPP_MODEL_PATH=/path/to/reasoning.gguf
+#          (optional) LLAMACPP_EMBED_MODEL_PATH=/path/to/embed.gguf
+#     Vision is not yet supported in-process; the loop degrades to DOM-only.
+#
+# Optional on-device OCR (the agent works without it):
+#     pip install pytesseract pillow   + install the Tesseract binary
+#
+# llama-cpp-python is intentionally NOT pinned here (its wheel varies by
+# CPU/GPU/OS). Install the variant that matches your hardware.
+
+# LangChain for agent orchestration
+langchain==0.1.6
+langchain-community==0.0.20
+
+# Date/Time utilities
+python-dateutil==2.8.2

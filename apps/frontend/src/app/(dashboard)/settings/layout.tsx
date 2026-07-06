@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 'use client';
 
 import Link from 'next/link';
@@ -43,4 +44,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
       {children}
     </div>
   );
+=======
+export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 }

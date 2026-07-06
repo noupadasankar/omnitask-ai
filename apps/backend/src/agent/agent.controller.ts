@@ -218,7 +218,11 @@ export class AgentController {
       include: { session: { select: { userId: true } } },
     });
 
+<<<<<<< HEAD
     if (!approval || !approval.session || approval.session.userId !== req.user.id) {
+=======
+    if (!approval || approval.session.userId !== req.user.id) {
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
     }
 
@@ -227,7 +231,11 @@ export class AgentController {
       'APPROVED',
     );
     await this.workerRelay.setApprovalDecision(
+<<<<<<< HEAD
       approval.sessionId!,
+=======
+      approval.sessionId,
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       approval.stepIndex,
       'APPROVED',
     );
@@ -245,7 +253,11 @@ export class AgentController {
       include: { session: { select: { userId: true } } },
     });
 
+<<<<<<< HEAD
     if (!approval || !approval.session || approval.session.userId !== req.user.id) {
+=======
+    if (!approval || approval.session.userId !== req.user.id) {
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       throw new HttpException('Approval request not found', HttpStatus.NOT_FOUND);
     }
 
@@ -254,7 +266,11 @@ export class AgentController {
       'DENIED',
     );
     await this.workerRelay.setApprovalDecision(
+<<<<<<< HEAD
       approval.sessionId!,
+=======
+      approval.sessionId,
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       approval.stepIndex,
       'DENIED',
     );

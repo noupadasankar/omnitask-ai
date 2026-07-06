@@ -12,7 +12,10 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:post-deploy": "psql \"${DATABASE_URL}\" -f prisma/post-deploy.sql",
+<<<<<<< HEAD
     "migrate:backfill": "ts-node prisma/seed-backfill.ts",
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     "train:export": "ts-node src/training/export-trajectories.ts",
     "test": "jest",
     "test:e2e": "jest --config test/jest-e2e.json"
@@ -69,8 +72,12 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
+<<<<<<< HEAD
     "pg": "^8.16.3",
     "pino": "^10.3.1",
+=======
+    "pg": "^8.11.0",
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     "playwright": "^1.44.0",
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.0",

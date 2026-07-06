@@ -52,6 +52,7 @@ class EventPublisher:
         key = f"omnitask:approval:{session_id}:{step_index}"
         deadline = now_ms() + timeout_ms
         while now_ms() < deadline:
+<<<<<<< HEAD
             try:
                 value = await self.client.get(key)
                 if value == "APPROVED":
@@ -64,6 +65,15 @@ class EventPublisher:
                 # A transient Redis blip must not crash the apply loop — keep
                 # polling until the deadline (the relay retries writing the key).
                 pass
+=======
+            value = await self.client.get(key)
+            if value == "APPROVED":
+                await self.client.delete(key)
+                return True
+            if value == "DENIED":
+                await self.client.delete(key)
+                return False
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             await asyncio.sleep(1)
         return False
 
@@ -72,6 +82,7 @@ class EventPublisher:
         key = f"omnitask:healing:{session_id}:{step_index}"
         deadline = now_ms() + timeout_ms
         while now_ms() < deadline:
+<<<<<<< HEAD
             try:
                 value = await self.client.get(key)
                 if value:
@@ -83,5 +94,14 @@ class EventPublisher:
             except Exception:
                 # Transient Redis error — keep polling until the deadline.
                 pass
+=======
+            value = await self.client.get(key)
+            if value:
+                await self.client.delete(key)
+                try:
+                    return json.loads(value)
+                except Exception:
+                    return None
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             await asyncio.sleep(1)
         return None

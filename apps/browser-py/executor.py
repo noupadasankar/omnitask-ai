@@ -47,6 +47,7 @@ ACTION_TIMEOUT = 15_000
 # page can't loop forever. Override with BROWSER_MAX_RECOVERIES.
 _MAX_RECOVERIES = int(os.environ.get("BROWSER_MAX_RECOVERIES", "2"))
 
+<<<<<<< HEAD
 # Per-session persistent page registry.
 # When a job arrives with keep_session=True (per-step dispatch from BullMQ
 # agent processors), the page is NOT closed after the step — it stays here
@@ -54,6 +55,8 @@ _MAX_RECOVERIES = int(os.environ.get("BROWSER_MAX_RECOVERIES", "2"))
 # Entries are removed when keep_session=False (final step or whole-plan job).
 _session_pages: dict[str, "_LiveSession"] = {}
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 def _is_crash_error(err: Exception) -> bool:
     """True when the page/context/browser died (renderer crash, target closed).
@@ -318,19 +321,30 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
     viewport = config.get("viewport") or {"width": 1280, "height": 800}
     headless = config.get("headless", True)
     quality = int(os.environ.get("PY_STREAM_QUALITY", "60"))
+<<<<<<< HEAD
     # Per-step dispatch from BullMQ agent processors: keep the page alive between steps.
     keep_session = bool(job.get("keep_session", False))
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
     await publisher.publish(session_id, "session:worker:started", {
         "sessionId": session_id, "userId": user_id, "goal": goal,
         "totalSteps": len(steps), "attempt": 1,
     })
+<<<<<<< HEAD
+=======
+    # Authoritative browser lifecycle. The worker OWNS browser:state for this
+    # path; the relay maps these signals onto the backend state authority. The
+    # backend never guesses these — see SessionManagerService.
+    await publisher.publish(session_id, "worker:browser_state", {"state": "INITIALIZING"})
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
     streamer = None
     page = None
     input_ctl = None
     live = None
 
+<<<<<<< HEAD
     # Check for a persisted live session from a previous per-step dispatch.
     prev_live = _session_pages.get(session_id)
     if prev_live is not None and prev_live.page is not None:
@@ -378,11 +392,44 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
             return
 
         # Holder for the live session — shared with step loop for crash recovery.
+=======
+    try:
+        # Per-user PERSISTENT profile: stays logged in across runs/restarts and is
+        # reused (no relaunch per run). Strictly isolated per user — never shared.
+        manager = get_browser_manager(
+            pw,
+            launch_args=LAUNCH_ARGS,
+            user_agent=USER_AGENT,
+            stealth_js=STEALTH_JS,
+            default_viewport=viewport,
+        )
+        context, page = await manager.new_page(user_id, headless=headless)
+        try:
+            await page.set_viewport_size(viewport)
+        except Exception:
+            pass
+        _attach_telemetry(page, publisher, session_id)
+
+        streamer = Screencaster(page, publisher, session_id, viewport["width"], viewport["height"], quality)
+        await streamer.start()
+        # Let the user click/type/scroll into the live view ("Take Control").
+        input_ctl = InputController(page, publisher.client, session_id)
+        await input_ctl.start()
+
+        # Holder shared with the step loop so it can swap to a recovered page after
+        # a crash without unwinding the run (stream + input rebind to the new page).
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         live = _LiveSession(manager, user_id, headless, publisher, session_id)
         live.page = page
         live.streamer = streamer
         live.input_ctl = input_ctl
 
+<<<<<<< HEAD
+=======
+        # When a page element triggers a file-chooser dialog, store the Playwright
+        # FileChooser on the controller and notify the dashboard so it can open the
+        # native OS picker and send the file back via browser:input {type:"file_upload"}.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         def _on_filechooser(chooser):
             input_ctl.pending_file_chooser = chooser
             _fire(publisher.publish(session_id, "browser:filechooser", {
@@ -390,6 +437,14 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
             }))
         page.on("filechooser", _on_filechooser)
 
+<<<<<<< HEAD
+=======
+        # Browser health: a renderer crash (OOM / GPU) freezes the live view. Flip
+        # state to ERROR immediately so the dashboard reflects it. If the crash
+        # happens DURING a step, the in-flight await raises and _run_steps drives
+        # recovery (relaunch in the same logged-in context + retry). If it happens
+        # while idle (e.g. the user is driving), recover here so the view returns.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         def _on_crash(*_):
             _fire(publisher.publish(session_id, "worker:browser_state", {"state": "ERROR"}))
             if live is not None:
@@ -397,12 +452,25 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
         page.on("crash", _on_crash)
 
         await publisher.publish(session_id, "browser:initialized", {"sessionId": session_id})
+<<<<<<< HEAD
         await publisher.publish(session_id, "worker:browser_state", {"state": "READY"})
 
     # Main execution — shared by fresh and resumed sessions.
     try:
         await publisher.publish(session_id, "worker:browser_state", {"state": "RUNNING"})
 
+=======
+        # Chromium is up and the observer stream is attached, but no automation
+        # has run yet → READY (not RUNNING).
+        await publisher.publish(session_id, "worker:browser_state", {"state": "READY"})
+
+        # Automation begins now — the browser is live and being driven → RUNNING.
+        await publisher.publish(session_id, "worker:browser_state", {"state": "RUNNING"})
+
+        # Route: an explicit `skill` hint runs the AI automation skill flow.
+        # Without it we execute the Node-generated step plan unchanged, so plugin
+        # apply/checkout flows (with their approval gates) are never replaced.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         skill_name = job.get("skill")
         if skill_name:
             from skills import run_domain_skill  # lazy: step-only runs stay dependency-free
@@ -415,7 +483,12 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
             healed = 0
         else:
             results, healed = await _run_steps(page, steps, publisher, session_id, live)
+<<<<<<< HEAD
             page = live.page  # a crash mid-run swaps to the recovered page
+=======
+            # A crash mid-run swaps in a recovered page — use it for the rest.
+            page = live.page
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             total = len(steps)
             all_passed = bool(results) and all(r["success"] for r in results) and len(results) == len(steps)
             status = "success" if all_passed else "partial"
@@ -433,6 +506,7 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
             "results": [{"stepIndex": r.get("stepIndex"), "success": r.get("success"),
                          "error": r.get("error"), "durationMs": r.get("durationMs", 0)} for r in results],
         })
+<<<<<<< HEAD
 
         if keep_session:
             # Per-step dispatch: store the live session so the next step continues
@@ -445,11 +519,18 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
 
     except Exception as err:  # noqa: BLE001 — fatal job error
         _session_pages.pop(session_id, None)
+=======
+        # Browser run finished cleanly → STOPPED (browser closes in finally).
+        await publisher.publish(session_id, "worker:browser_state", {"state": "STOPPED"})
+
+    except Exception as err:  # noqa: BLE001 — fatal job error
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         await publisher.publish(session_id, "execution:failed", {
             "sessionId": session_id, "reason": "worker_error", "message": str(err),
         })
         await publisher.publish(session_id, "worker:browser_state", {"state": "ERROR"})
     finally:
+<<<<<<< HEAD
         if not keep_session:
             # On a fresh run, use local vars; on a resumed session the active
             # streamer/input_ctl live on the _LiveSession object.
@@ -553,11 +634,35 @@ async def _run_steps(page, steps, publisher, session_id, live=None):
     VISION_AGENT, DATA_AGENT, FORM_AGENT, VERIFIER_AGENT) based on the
     `agent` field set by the Orchestrator LLM. Emits `agent_status` before
     each step so the dashboard shows which agent is live.
+=======
+        if input_ctl is not None:
+            await input_ctl.stop()
+        if streamer is not None:
+            await streamer.stop()
+        # Close only the PAGE — the per-user persistent context stays warm in the
+        # BrowserManager so the next run reuses the logged-in session (and the
+        # profile persists on disk regardless). Contexts close on engine shutdown.
+        # After a crash recovery the live page is live.page, so prefer that.
+        final_page = live.page if live is not None and live.page is not None else page
+        if final_page is not None:
+            try:
+                await final_page.close()
+            except Exception:
+                pass
+
+
+async def _run_steps(page, steps, publisher, session_id, live=None):
+    """Execute a Node-generated step plan (the original engine path).
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
     If a step fails because the page/browser CRASHED (not a normal automation
     error), and a `live` session is available, we relaunch a fresh page in the
     SAME persistent context (session intact), rebind the stream + input, and RETRY
+<<<<<<< HEAD
     the same step.
+=======
+    the same step — so a renderer crash mid-run self-heals instead of aborting.
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     """
     results: list[dict] = []
     healed = 0
@@ -571,15 +676,21 @@ async def _run_steps(page, steps, publisher, session_id, live=None):
         idx = step.get("index")
         start = now_ms()
 
+<<<<<<< HEAD
         # Broadcast which specialist agent is about to handle this step.
         await _emit_agent_status(publisher, session_id, step)
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         await publisher.publish(session_id, "step:started", {
             "sessionId": session_id, "stepIndex": idx,
             "description": step.get("description"), "action": step.get("action"),
             "target": step.get("target"),
+<<<<<<< HEAD
             "agent": step.get("agent") or "BROWSER_AGENT",
             "emit_status": step.get("emit_status"),
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         })
 
         try:
@@ -599,20 +710,30 @@ async def _run_steps(page, steps, publisher, session_id, live=None):
                     })
                     break
 
+<<<<<<< HEAD
             data = await _dispatch_to_agent(page, step, publisher, session_id)
+=======
+            data = await execute_action(page, step, publisher, session_id)
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             shot = await _safe_screenshot(page)
             results.append({"success": True, "stepIndex": idx, "action": step.get("action"),
                             "screenshot": shot, "data": data, "durationMs": now_ms() - start})
 
+<<<<<<< HEAD
             # Post-step: broadcast completed agent_status with screenshot
             await _emit_agent_status(publisher, session_id, step, screenshot_b64=shot, step_output=data)
 
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             await publisher.publish(session_id, "step:completed", {
                 "sessionId": session_id, "stepIndex": idx,
                 "description": step.get("description"), "screenshot": shot, "data": data,
                 "durationMs": now_ms() - start,
                 "url": page.url if not page.is_closed() else None,
+<<<<<<< HEAD
                 "agent": step.get("agent") or "BROWSER_AGENT",
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
             })
 
             if step.get("waitCondition"):

@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+=======
+import { Injectable, Logger } from '@nestjs/common';
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AutomationGateService } from '../runtime/automation-gate.service';
 import { ShadowModeService } from '../shadow-mode.service';
@@ -22,7 +26,10 @@ export class AutomationGateStage implements IExecutionStage {
     private readonly automationGate: AutomationGateService,
     private readonly shadowMode: ShadowModeService,
     private readonly prisma: PrismaService,
+<<<<<<< HEAD
     @Inject(forwardRef(() => SessionManagerService))
+=======
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     private readonly sessionManager: SessionManagerService,
     private readonly eventEmitter: EventEmitter2,
     private readonly eventBus: ExecutionEventBus,

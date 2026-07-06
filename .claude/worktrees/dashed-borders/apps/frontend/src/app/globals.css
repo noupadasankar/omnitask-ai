@@ -1,0 +1,342 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   ROOT THEME
+========================================================= */
+
+:root {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 96%;
+
+  --card: 0 0% 6%;
+  --card-foreground: 0 0% 96%;
+
+  --popover: 0 0% 6%;
+  --popover-foreground: 0 0% 96%;
+
+  --primary: 0 84% 60%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 0 0% 96%;
+
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 62%;
+
+  --accent: 0 72% 51%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 70% 45%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 14%;
+  --input: 0 0% 14%;
+  --ring: 0 84% 60%;
+
+  --radius: 1rem;
+}
+
+/* =========================================================
+   BASE
+========================================================= */
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-black text-foreground antialiased;
+    font-family: 'Inter', sans-serif;
+
+    background:
+      radial-gradient(
+        circle at top,
+        rgba(120, 0, 0, 0.18),
+        transparent 35%
+      ),
+      radial-gradient(
+        circle at bottom right,
+        rgba(255, 0, 0, 0.08),
+        transparent 30%
+      ),
+      #030303;
+
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply tracking-tight;
+  }
+
+  ::selection {
+    background: rgba(255, 0, 0, 0.25);
+    color: white;
+  }
+}
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 0, 0, 0.4);
+}
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+
+  .red-glow {
+    box-shadow:
+      0 0 20px rgba(255, 0, 0, 0.15),
+      0 0 40px rgba(255, 0, 0, 0.08);
+  }
+
+  .card-gradient {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255,255,255,0.04),
+        rgba(255,255,255,0.02)
+      );
+  }
+
+  .border-gradient {
+    position: relative;
+  }
+
+  .border-gradient::before {
+    content: '';
+
+    position: absolute;
+    inset: 0;
+
+    border-radius: inherit;
+    padding: 1px;
+
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255,0,0,0.5),
+        rgba(255,255,255,0.04)
+      );
+
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+
+    pointer-events: none;
+  }
+
+  .text-gradient {
+    background:
+      linear-gradient(
+        90deg,
+        #ffffff,
+        #ff4d4d
+      );
+
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .terminal-text {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .noise-bg::before {
+    content: '';
+
+    position: absolute;
+    inset: 0;
+
+    opacity: 0.03;
+
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Ccircle cx='2' cy='2' r='2'/%3E%3C/g%3E%3C/svg%3E");
+
+    pointer-events: none;
+  }
+}
+
+/* =========================================================
+   ANIMATIONS
+========================================================= */
+
+/* ---------------------------------------------------------
+   Loading screen helpers (unique names to avoid Tailwind conflicts)
+---------------------------------------------------------- */
+
+@keyframes omni-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes omni-pulse-gentle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-spin-slow {
+  animation: omnitask-spin-slow 2s linear infinite;
+}
+
+@keyframes omnitask-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-pulse-gentle {
+  animation: omni-pulse-gentle 1.6s ease-in-out infinite;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-700 {
+  animation-delay: 700ms;
+}
+
+@keyframes pulse-red {
+
+  0% {
+    box-shadow: 0 0 0 rgba(255, 0, 0, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 25px rgba(255, 0, 0, 0.45);
+  }
+
+  100% {
+    box-shadow: 0 0 0 rgba(255, 0, 0, 0.2);
+  }
+}
+
+@keyframes grid-move {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 80px 80px;
+  }
+}
+
+.animate-pulse-red {
+  animation: pulse-red 2.5s infinite;
+}
+
+.animate-grid {
+  animation: grid-move 18s linear infinite;
+}
+
+/* =========================================================
+   GRID BACKGROUND
+========================================================= */
+
+.cyber-grid {
+  background-image:
+    linear-gradient(
+      rgba(255,255,255,0.03) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0.03) 1px,
+      transparent 1px
+    );
+
+  background-size: 80px 80px;
+}
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(255,255,255,0.35);
+}
+
+/* =========================================================
+   TRANSITIONS
+========================================================= */
+
+* {
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}

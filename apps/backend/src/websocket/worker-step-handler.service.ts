@@ -326,7 +326,11 @@ export class WorkerStepHandler {
       plan: unknown;
       metadata: unknown;
       totalSteps?: number;
+<<<<<<< HEAD
       task?: { naturalLanguage: string | null } | null;
+=======
+      task?: { naturalLanguage: string } | null;
+>>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     },
     payload: WorkerEventPayload,
     durationMs: number,
