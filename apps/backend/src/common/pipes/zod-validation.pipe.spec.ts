@@ -44,11 +44,7 @@ describe('ZodValidationPipe', () => {
   it('should coerce string to number when Zod allows', () => {
     const coercingSchema = z.object({ count: z.coerce.number().int().min(0) });
     const coercingPipe = new ZodValidationPipe(coercingSchema);
-<<<<<<< HEAD
     const result = coercingPipe.transform({ count: '42' }) as { count: number };
-=======
-    const result = coercingPipe.transform({ count: '42' });
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     expect(result.count).toBe(42);
   });
 

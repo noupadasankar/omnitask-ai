@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-=======
-import { Injectable, Logger } from '@nestjs/common';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { BrowserAgentService } from '../browser-agent.service';
 import { ScreenshotStreamerService } from '../screenshot-streamer.service';
@@ -25,23 +21,16 @@ export class StepExecutionStage implements IExecutionStage {
   private approvalTimeouts = new Map<string, NodeJS.Timeout>();
 
   constructor(
-<<<<<<< HEAD
     @Inject(forwardRef(() => BrowserAgentService))
     private readonly browserAgent: BrowserAgentService,
     @Inject(forwardRef(() => ScreenshotStreamerService))
-=======
-    private readonly browserAgent: BrowserAgentService,
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     private readonly screenshotStreamer: ScreenshotStreamerService,
     private readonly toolRouter: ToolRouterService,
     private readonly visionAgent: VisionAgentService,
     private readonly policyEngine: PolicyEngineService,
     private readonly plannerAgent: PlannerAgentService,
     private readonly prisma: PrismaService,
-<<<<<<< HEAD
     @Inject(forwardRef(() => SessionManagerService))
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     private readonly sessionManager: SessionManagerService,
     private readonly eventEmitter: EventEmitter2,
     private readonly eventBus: ExecutionEventBus,

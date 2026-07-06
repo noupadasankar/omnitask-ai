@@ -10,7 +10,6 @@ const passwordSchema = z
   .regex(/[0-9]/, 'Password must contain at least one digit')
   .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
 
-<<<<<<< HEAD
 // Emails are case-insensitive everywhere (RFC-practical, matches Google/most
 // providers) — normalize at the boundary so lookups and storage always agree.
 const emailSchema = z
@@ -21,11 +20,6 @@ const emailSchema = z
 // 📩 Login
 export const LoginDtoSchema = z.object({
   email: emailSchema,
-=======
-// 📩 Login
-export const LoginDtoSchema = z.object({
-  email: z.string().email('Invalid email address'),
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -33,11 +27,7 @@ export type LoginDto = z.infer<typeof LoginDtoSchema>;
 
 // 🆕 Register
 export const RegisterDtoSchema = z.object({
-<<<<<<< HEAD
   email: emailSchema,
-=======
-  email: z.string().email('Invalid email address'),
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   password: passwordSchema,
   name: z.string().min(2).max(50).optional(),
 });
@@ -60,11 +50,7 @@ export type LogoutDto = z.infer<typeof LogoutDtoSchema>;
 
 // 🔑 Forgot password
 export const ForgotPasswordDtoSchema = z.object({
-<<<<<<< HEAD
   email: emailSchema,
-=======
-  email: z.string().email('Invalid email address'),
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 });
 
 export type ForgotPasswordDto = z.infer<typeof ForgotPasswordDtoSchema>;
@@ -86,11 +72,7 @@ export type VerifyEmailDto = z.infer<typeof VerifyEmailDtoSchema>;
 
 // 📧 Request email verification
 export const RequestEmailVerificationDtoSchema = z.object({
-<<<<<<< HEAD
   email: emailSchema,
-=======
-  email: z.string().email('Invalid email address'),
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 });
 
 export type RequestEmailVerificationDto = z.infer<typeof RequestEmailVerificationDtoSchema>;

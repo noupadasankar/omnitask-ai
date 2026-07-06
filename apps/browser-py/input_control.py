@@ -81,11 +81,8 @@ class InputController:
             elif t == "mouseup":
                 await self.page.mouse.up()
             elif t == "wheel":
-<<<<<<< HEAD
                 if "x" in d and "y" in d:
                     await self.page.mouse.move(float(d["x"]), float(d["y"]))
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
                 await self.page.mouse.wheel(float(d.get("deltaX", 0)), float(d.get("deltaY", 0)))
             elif t == "type":
                 await self.page.keyboard.type(str(d.get("text", "")))

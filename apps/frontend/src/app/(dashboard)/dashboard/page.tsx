@@ -2,10 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-<<<<<<< HEAD
 import dynamic from 'next/dynamic';
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -35,12 +32,9 @@ import {
   Briefcase,
   Pizza,
   Clapperboard,
-<<<<<<< HEAD
   Paperclip,
   Plus,
   X,
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 } from 'lucide-react';
 import {
   Trash2 as Trash2Icon,
@@ -50,7 +44,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useAgentSession } from '@/hooks/useAgentSession';
 import { useAgentStore } from '@/store/agent.store';
-<<<<<<< HEAD
 import { ResultsPanel } from '@/components/execution/ResultsPanel';
 import { ClarificationModal } from '@/components/dashboard/ClarificationModal';
 import { VerificationResultPanel } from '@/components/execution/VerificationResultPanel';
@@ -72,13 +65,6 @@ const JobWizardModal = dynamic(
   () => import('@/components/jobs/JobWizardModal').then((m) => m.JobWizardModal),
   { ssr: false },
 );
-=======
-import { LiveBrowserView } from '@/components/execution/LiveBrowserView';
-import { ResultsPanel } from '@/components/execution/ResultsPanel';
-import { ClarificationModal } from '@/components/dashboard/ClarificationModal';
-import { VerificationResultPanel } from '@/components/execution/VerificationResultPanel';
-import { JobWizardModal, type JobWizardResult } from '@/components/jobs/JobWizardModal';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import {
   getUserProfileCard,
   saveUserProfileCard,
@@ -87,10 +73,7 @@ import {
   getDomainPreferences,
   getUserHistory,
 } from '@/services/agent.service';
-<<<<<<< HEAD
 import { uploadFile } from '@/services/files.service';
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import '@/styles/omnitask-dashboard.css';
 import { SplitMicButton } from '@/components/voice/SplitMicButton';
 
@@ -238,13 +221,10 @@ function DashboardPage() {
   const [launching, setLaunching] = useState(false);
   const [jobWizardOpen, setJobWizardOpen] = useState(false);
   const [inputError, setInputError] = useState(false);
-<<<<<<< HEAD
   const [attachedFile, setAttachedFile] = useState<{ id: string; name: string } | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
   const [profile, setProfile] = useState<any>({
     name: '',
@@ -328,16 +308,12 @@ function DashboardPage() {
     async function loadData() {
       setProfileLoading(true);
       try {
-<<<<<<< HEAD
         const [card, skillsList, registryData, domainPrefs] = await Promise.all([
           getUserProfileCard(),
           listSkills(),
           getAgentRegistry().catch(() => null),
           getDomainPreferences().catch(() => null),
         ]);
-=======
-        const card = await getUserProfileCard();
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         if (card) {
           setProfile({
             name: card.name || '',
@@ -349,14 +325,6 @@ function DashboardPage() {
             favoriteSites: card.favoriteSites || [],
           });
         }
-<<<<<<< HEAD
-=======
-        const [skillsList, registryData, domainPrefs] = await Promise.all([
-          listSkills(),
-          getAgentRegistry().catch(() => null),
-          getDomainPreferences().catch(() => null),
-        ]);
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         if (skillsList) setSkills(skillsList);
         if (registryData) setRegistry(registryData);
         if (domainPrefs) store.setUserPreferences(domainPrefs);
@@ -413,7 +381,6 @@ function DashboardPage() {
     setElapsedTime(0);
     setTaskHistory((prev) => [task, ...prev.slice(0, 4)]);
 
-<<<<<<< HEAD
     const goalText = attachedFile ? `${task}\n\n[Attached file: ${attachedFile.name}]` : task;
 
     try {
@@ -423,20 +390,11 @@ function DashboardPage() {
         profile: 'balanced',
       });
       setAttachedFile(null);
-=======
-    try {
-      await session.startSession({
-        goal: task,
-        mode: 'autonomous',
-        profile: 'balanced',
-      });
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     } catch (err) {
       console.error('Launch failed:', err);
     } finally {
       setLaunching(false);
     }
-<<<<<<< HEAD
   }, [task, launching, isRunning, session, attachedFile]);
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -468,9 +426,6 @@ function DashboardPage() {
       setUploadingFile(false);
     }
   }, []);
-=======
-  }, [task, launching, isRunning, session]);
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
   const handleJobWizardLaunched = useCallback((result: JobWizardResult) => {
     setJobWizardOpen(false);
@@ -646,7 +601,6 @@ function DashboardPage() {
                   />
                 </div>
                 <div className="flex items-center justify-between  border-white/[0.06] px-5 py-3 bg-black/20">
-<<<<<<< HEAD
                   <div className="flex items-center gap-3">
                     <input
                       ref={fileInputRef}
@@ -671,10 +625,6 @@ function DashboardPage() {
                         <Plus className="h-6 w-6" />
                       )}
                     </button>
-=======
-                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-600 font-mono">
-                  
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
                   </div>
                   <div className="flex items-center gap-3">
                     <SplitMicButton onTranscript={(text) => setTask(prev => prev + (prev ? ' ' : '') + text)} />
@@ -695,7 +645,6 @@ function DashboardPage() {
                   </div>
                 </div>
               </div>
-<<<<<<< HEAD
               {attachedFile && (
                 <div className="mt-2 flex items-center justify-center">
                   <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300">
@@ -716,8 +665,6 @@ function DashboardPage() {
                   {uploadError}
                 </p>
               )}
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
               {inputError && (
                 <p className="mt-2 text-xs text-red-400 text-center animate-fade-up">
                   Please describe what you want the agent to do.

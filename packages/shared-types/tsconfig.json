@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-<<<<<<< HEAD
     "target": "es2020",
     "module": "commonjs",
     "declaration": true,
@@ -13,23 +12,5 @@
     "moduleResolution": "node"
   },
   "include": ["src/**/*.ts"],
-=======
-    "target": "ES2022",
-    "module": "ESNext",
-    "lib": ["ES2022"],
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "rootDir": ".",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
-  },
-  "include": ["index.ts", "src"],
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   "exclude": ["node_modules", "dist"]
 }

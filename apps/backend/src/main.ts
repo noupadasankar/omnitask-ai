@@ -1,12 +1,8 @@
 // Initialize OpenTelemetry before any NestJS module is loaded.
 // This must be the first import so auto-instrumentations can intercept
 // http, express, and nestjs-core module loads.
-<<<<<<< HEAD
 // TEMP-DIAGNOSTIC: disabled to isolate pg startup crash
 // import '../tracing';
-=======
-import '../tracing';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';

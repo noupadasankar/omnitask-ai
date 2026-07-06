@@ -116,7 +116,6 @@ if (infra.status !== 0) {
   process.exit(infra.status ?? 1);
 }
 
-<<<<<<< HEAD
 // Wait a moment for Postgres to accept connections, then push the Prisma schema
 console.log("▶ Pushing Prisma schema to the database...");
 const push = spawnSync(
@@ -139,11 +138,6 @@ if (!nodeOptions.some((option) => option.startsWith("--max-old-space-size="))) {
 }
 const devEnv = { ...process.env, NODE_OPTIONS: nodeOptions.join(" ") };
 
-=======
-console.log("▶ Launching backend + frontend + worker (turbo) and the Python engine...");
-console.log("  (Ctrl-C stops everything)");
-
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 const children = [];
 const start = (cmd, args, opts = {}) => {
   // Destructure well-known launcher opts so only real spawn opts (e.g. env)
@@ -192,11 +186,7 @@ const shutdown = (code) => {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-<<<<<<< HEAD
 start("pnpm", ["dev"], { env: devEnv });
-=======
-start("pnpm", ["dev"]);
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 if (py) {
   if (Object.keys(_backendRedis).length) {
     const keys = Object.keys(_backendRedis).join(", ");

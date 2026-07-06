@@ -11,14 +11,10 @@ import {
   Request,
   HttpCode,
   HttpStatus,
-<<<<<<< HEAD
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-=======
-} from '@nestjs/common';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { FilesService } from './files.service';
 import { CreateFileDto, UpdateFileDto, CreateFileDtoSchema, UpdateFileDtoSchema } from './dto/file.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -31,7 +27,6 @@ import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 export class FilesController {
   constructor(private filesService: FilesService) {}
 
-<<<<<<< HEAD
   @Post('upload')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
@@ -43,8 +38,6 @@ export class FilesController {
     return this.filesService.uploadAndCreate(req.user.id, file, taskId);
   }
 
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
   @Get()
   findAll(
     @Request() req: { user: { id: string } },

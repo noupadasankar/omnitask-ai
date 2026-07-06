@@ -19,10 +19,7 @@ function CallbackInner() {
     handled.current = true;
 
     const token = searchParams.get('token');
-<<<<<<< HEAD
     const refreshToken = searchParams.get('refreshToken');
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     const oauthError = searchParams.get('error');
 
     if (oauthError || !token) {
@@ -36,12 +33,9 @@ function CallbackInner() {
     }
 
     localStorage.setItem('token', token);
-<<<<<<< HEAD
     if (refreshToken) {
       localStorage.setItem('refreshToken', refreshToken);
     }
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 
     (async () => {
       await fetchUser();

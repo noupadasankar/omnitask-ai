@@ -2,11 +2,7 @@
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-<<<<<<< HEAD
 import { useState, useEffect} from 'react';
-=======
-import { useState, useEffect } from 'react';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import {
   ArrowRight,
   Bot,
@@ -32,15 +28,12 @@ const NeuralBrainCanvas = dynamic(
   { ssr: false },
 );
 
-<<<<<<< HEAD
 /* Drifting 0/1 binary-code background — client-only */
 const BinaryCodeBackdrop = dynamic(
   () => import('@/components/hero/BinaryCodeBackdrop'),
   { ssr: false },
 );
 
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 /* =====================================================
    FEATURE CONFIG WITH DETAILS & SIMULATIONS
    ===================================================== */
@@ -183,17 +176,10 @@ export default function HomePage() {
   const [selectedFeature, setSelectedFeature] = useState<FeatureSpec | null>(null);
   const [navHidden, setNavHidden] = useState(false);
 
-<<<<<<< HEAD
   useEffect(() => {
     const onScroll = () => setNavHidden(window.scrollY > 80);
     onScroll();
 
-=======
-  // Hide the topbar once the user scrolls down the page.
-  useEffect(() => {
-    const onScroll = () => setNavHidden(window.scrollY > 80);
-    onScroll();
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
@@ -201,7 +187,6 @@ export default function HomePage() {
   return (
     <div className="relative overflow-hidden min-h-screen">
       {/* ===================================================== */}
-<<<<<<< HEAD
       {/* AMBIENT BACKDROP — a continuous animated layer that   */}
       {/* stays pinned behind the ENTIRE page (fixed), so there's */}
       {/* no seam between the hero and the sections below it     */}
@@ -212,13 +197,10 @@ export default function HomePage() {
       </div>
 
       {/* ===================================================== */}
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       {/* CINEMATIC 3D NEURAL BACKDROP — spans the top fold,    */}
       {/* glowing through the navbar's backdrop-blur            */}
       {/* ===================================================== */}
       <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[118vh] overflow-hidden">
-<<<<<<< HEAD
         {/* the anatomical neural brain — same build as the Brain reference */}
         <NeuralBrainCanvas className="h-full opacity-85 transition-opacity duration-1000" />
 
@@ -239,14 +221,6 @@ export default function HomePage() {
 
         {/* bottom fade into the ambient backdrop below, no hard cutoff */}
         <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-b from-transparent to-[#040102]" />
-=======
-        <NeuralBrainCanvas className="h-full" />
-        {/* full dark base so the neural canvas reads as deep space */}
-        <div className="absolute inset-0 bg-black/30" />
-        {/* readability vignette — calm the centre behind the headline */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_58%_48%_at_50%_38%,rgba(3,3,3,0.85)_0%,rgba(3,3,3,0.55)_45%,transparent_75%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-b from-transparent to-black" />
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
       </div>
 
       {/* ===================================================== */}
@@ -357,11 +331,6 @@ export default function HomePage() {
       {/* FEATURES SECTION WITH INTERACTIVE CARDS */}
       {/* ===================================================== */}
       <section id="features" className="relative mx-auto max-w-7xl px-6 py-32">
-<<<<<<< HEAD
-=======
-        {/* section divider line */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         <div className="mb-20 text-center">
           <div className="mb-4 inline-flex rounded-full border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-300 font-semibold tracking-wider uppercase">
             Platform Capabilities
@@ -527,11 +496,6 @@ export default function HomePage() {
       {/* PRE-FOOTER CTA — re-engage before they leave          */}
       {/* ===================================================== */}
       <section className="relative">
-<<<<<<< HEAD
-=======
-        {/* section divider line */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
         <div className="relative mx-auto max-w-7xl px-6 py-24 text-center overflow-hidden">
           {/* ambient glow */}
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

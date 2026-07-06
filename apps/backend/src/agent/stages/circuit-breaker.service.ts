@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
-=======
-import { Injectable, Logger } from '@nestjs/common';
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
 import { PrismaService } from '../../prisma/prisma.service';
 import { SessionManagerService } from '../runtime/session-manager.service';
 import { DriftDetectorService } from '../drift-detector.service';
@@ -26,10 +22,7 @@ export class CognitiveCircuitBreaker {
 
   constructor(
     private readonly prisma: PrismaService,
-<<<<<<< HEAD
     @Inject(forwardRef(() => SessionManagerService))
-=======
->>>>>>> dab0d299b342a0e08b58cf73f14bd0e9670f5835
     private readonly sessionManager: SessionManagerService,
     private readonly driftDetector: DriftDetectorService,
     private readonly cpn: ConfidenceNetworkService,
