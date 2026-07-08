@@ -172,6 +172,10 @@ export interface BrowserSessionConfig {
   allowPayments?: boolean;
   /** User explicitly permits login flows without a per-launch prompt. */
   allowLogin?: boolean;
+  /** Set by ConfirmationService after user approves a PendingAction — bypasses ConfirmationGateStage on re-run. */
+  skipConfirmationGate?: boolean;
+  /** The PendingAction ID that triggered this re-run (for receipt generation). */
+  pendingActionId?: string;
 }
 
 export const DEFAULT_BROWSER_CONFIG: BrowserSessionConfig = {

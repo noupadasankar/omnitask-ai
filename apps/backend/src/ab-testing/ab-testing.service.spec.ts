@@ -1,8 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { AbTestingService } from './ab-testing.service';
-import { PrismaService } from '../prisma/prisma.service';
+import type { AbTestingRepository } from './ab-testing.repository';
+import type { StrategyTestRecord } from './ab-testing.model';
 
-const baseTest = {
+const baseTest: StrategyTestRecord = {
   id: 'test-1',
   userId: 'user-1',
   name: 'Test A/B',
@@ -23,132 +23,142 @@ const baseTest = {
   updatedAt: new Date(),
 };
 
-const mockPrisma = {
-  strategyTest: {
-    create: jest.fn(),
-    findUnique: jest.fn(),
-    findMany: jest.fn(),
-    update: jest.fn(),
-  },
+const mockRepo: jest.Mocked<
+  Pick<
+    AbTestingRepository,
+    'createTest' | 'findTest' | 'listActiveByUser' | 'applyRun' | 'declareWinner'
+  >
+> = {
+  createTest: jest.fn(),
+  findTest: jest.fn(),
+  listActiveByUser: jest.fn(),
+  applyRun: jest.fn(),
+  declareWinner: jest.fn(),
 };
 
 describe('AbTestingService', () => {
   let service: AbTestingService;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.clearAllMocks();
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AbTestingService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
-    }).compile();
-    service = module.get<AbTestingService>(AbTestingService);
+    service = new AbTestingService(mockRepo as unknown as AbTestingRepository);
   });
 
   describe('createTest', () => {
-    it('should create test with active status', async () => {
+    it('should delegate to repo.createTest and return an active test', async () => {
       const dto = { name: 'My Test', strategyA: { x: 1 }, strategyB: { x: 2 } };
-      mockPrisma.strategyTest.create.mockResolvedValue({ ...baseTest, ...dto });
+      mockRepo.createTest.mockResolvedValue({ ...baseTest, ...dto });
       const result = await service.createTest('user-1', dto);
-      expect(mockPrisma.strategyTest.create).toHaveBeenCalledWith({
-        data: {
-          userId: 'user-1',
-          name: 'My Test',
-          description: undefined,
-          strategyA: { x: 1 },
-          strategyB: { x: 2 },
-          status: 'active',
-        },
-      });
+      expect(mockRepo.createTest).toHaveBeenCalledWith('user-1', dto);
       expect(result.status).toBe('active');
     });
   });
 
   describe('recordRun', () => {
     it('should return null if test not found', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue(null);
-      const result = await service.recordRun('bad-id', { variant: 'A', success: true, durationMs: 100 });
+      mockRepo.findTest.mockResolvedValue(null);
+      const result = await service.recordRun('bad-id', {
+        variant: 'A',
+        success: true,
+        durationMs: 100,
+      });
       expect(result).toBeNull();
+      expect(mockRepo.applyRun).not.toHaveBeenCalled();
     });
 
     it('should return null if test is not active', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest, status: 'completed' });
-      const result = await service.recordRun('test-1', { variant: 'A', success: true, durationMs: 100 });
+      mockRepo.findTest.mockResolvedValue({ ...baseTest, status: 'completed' });
+      const result = await service.recordRun('test-1', {
+        variant: 'A',
+        success: true,
+        durationMs: 100,
+      });
       expect(result).toBeNull();
+      expect(mockRepo.applyRun).not.toHaveBeenCalled();
     });
 
-    it('should increment runs for variant A', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest });
-      mockPrisma.strategyTest.update.mockResolvedValue({ ...baseTest, totalRunsA: 1 });
+    it('should apply the run to variant A fields and mark success', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest });
+      mockRepo.applyRun.mockResolvedValue({ ...baseTest, totalRunsA: 1, successA: 1 });
       await service.recordRun('test-1', { variant: 'A', success: true, durationMs: 200 });
-      expect(mockPrisma.strategyTest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ totalRunsA: { increment: 1 } }),
-        }),
-      );
+      expect(mockRepo.applyRun).toHaveBeenCalledWith('test-1', {
+        runField: 'totalRunsA',
+        successField: 'successA',
+        durationField: 'avgDurationA',
+        newAvgDuration: 200,
+        incrementSuccess: true,
+      });
     });
 
-    it('should increment runs for variant B', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest });
-      mockPrisma.strategyTest.update.mockResolvedValue({ ...baseTest, totalRunsB: 1 });
+    it('should apply the run to variant B fields and not mark success on failure', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest });
+      mockRepo.applyRun.mockResolvedValue({ ...baseTest, totalRunsB: 1 });
       await service.recordRun('test-1', { variant: 'B', success: false, durationMs: 150 });
-      expect(mockPrisma.strategyTest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ totalRunsB: { increment: 1 } }),
-        }),
-      );
+      expect(mockRepo.applyRun).toHaveBeenCalledWith('test-1', {
+        runField: 'totalRunsB',
+        successField: 'successB',
+        durationField: 'avgDurationB',
+        newAvgDuration: 150,
+        incrementSuccess: false,
+      });
     });
 
-    it('should increment success count on successful run', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest });
-      mockPrisma.strategyTest.update.mockResolvedValue({ ...baseTest, successA: 1 });
-      await service.recordRun('test-1', { variant: 'A', success: true, durationMs: 100 });
-      expect(mockPrisma.strategyTest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ successA: { increment: 1 } }),
-        }),
-      );
-    });
-
-    it('should not increment success when run failed', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest });
-      mockPrisma.strategyTest.update.mockResolvedValue({ ...baseTest, successA: 0 });
-      await service.recordRun('test-1', { variant: 'A', success: false, durationMs: 100 });
-      const updateCall = mockPrisma.strategyTest.update.mock.calls[0][0];
-      expect(updateCall.data.successA).toBeUndefined();
-    });
-
-    it('should update average duration', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest, avgDurationA: 100, totalRunsA: 2 });
-      mockPrisma.strategyTest.update.mockResolvedValue({ ...baseTest, avgDurationA: 125 });
+    it('should recompute the running average duration when prior runs exist', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest, avgDurationA: 100, totalRunsA: 2 });
+      mockRepo.applyRun.mockResolvedValue({ ...baseTest });
       await service.recordRun('test-1', { variant: 'A', success: true, durationMs: 200 });
-      expect(mockPrisma.strategyTest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ avgDurationA: expect.any(Number) }),
-        }),
+      // (100 * 2 + 200) / (2 + 1) = 166.666...
+      expect(mockRepo.applyRun).toHaveBeenCalledWith(
+        'test-1',
+        expect.objectContaining({ newAvgDuration: (100 * 2 + 200) / 3 }),
       );
+    });
+
+    it('should use the raw duration as the average for the first run', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest, avgDurationA: 0, totalRunsA: 0 });
+      mockRepo.applyRun.mockResolvedValue({ ...baseTest });
+      await service.recordRun('test-1', { variant: 'A', success: true, durationMs: 175 });
+      expect(mockRepo.applyRun).toHaveBeenCalledWith(
+        'test-1',
+        expect.objectContaining({ newAvgDuration: 175 }),
+      );
+    });
+
+    it('should return the record produced by applyRun', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest });
+      const updated = { ...baseTest, totalRunsA: 1 };
+      mockRepo.applyRun.mockResolvedValue(updated);
+      const result = await service.recordRun('test-1', {
+        variant: 'A',
+        success: true,
+        durationMs: 100,
+      });
+      expect(result).toBe(updated);
     });
   });
 
   describe('getResults', () => {
-    it('should return null for non-existent test', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue(null);
+    it('should return null for a non-existent test', async () => {
+      mockRepo.findTest.mockResolvedValue(null);
       const result = await service.getResults('bad-id');
       expect(result).toBeNull();
     });
 
-    it('should calculate success rates', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({
-        ...baseTest, totalRunsA: 10, successA: 8, totalRunsB: 10, successB: 5,
+    it('should calculate success rates (80% / 50%)', async () => {
+      mockRepo.findTest.mockResolvedValue({
+        ...baseTest,
+        totalRunsA: 10,
+        successA: 8,
+        totalRunsB: 10,
+        successB: 5,
       });
       const result = await service.getResults('test-1');
       expect(result!.variantA.successRate).toBe(80);
       expect(result!.variantB.successRate).toBe(50);
     });
 
-    it('should return 0 rates when no runs', async () => {
-      mockPrisma.strategyTest.findUnique.mockResolvedValue({ ...baseTest });
+    it('should return 0 rates when there are no runs (0 / 0)', async () => {
+      mockRepo.findTest.mockResolvedValue({ ...baseTest });
       const result = await service.getResults('test-1');
       expect(result!.variantA.successRate).toBe(0);
       expect(result!.variantB.successRate).toBe(0);
@@ -156,57 +166,60 @@ describe('AbTestingService', () => {
   });
 
   describe('listActive', () => {
-    it('should return active tests for user', async () => {
-      mockPrisma.strategyTest.findMany.mockResolvedValue([baseTest]);
+    it('should delegate to repo.listActiveByUser', async () => {
+      mockRepo.listActiveByUser.mockResolvedValue([baseTest]);
       const result = await service.listActive('user-1');
-      expect(mockPrisma.strategyTest.findMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1', status: 'active' },
-        orderBy: { startedAt: 'desc' },
-      });
+      expect(mockRepo.listActiveByUser).toHaveBeenCalledWith('user-1');
       expect(result).toHaveLength(1);
     });
   });
 
   describe('checkWinner', () => {
-    it('should not declare winner before 10 runs per variant', async () => {
-      mockPrisma.strategyTest.update.mockResolvedValue({});
+    it('should not declare a winner before 10 runs per variant', async () => {
       const test = { ...baseTest, totalRunsA: 5, totalRunsB: 5 };
       await (service as any).checkWinner('test-1', test);
-      expect(mockPrisma.strategyTest.update).not.toHaveBeenCalled();
+      expect(mockRepo.declareWinner).not.toHaveBeenCalled();
     });
 
-    it('should declare A winner when rateA > rateB by >15%', async () => {
-      mockPrisma.strategyTest.update.mockResolvedValue({});
-      const test = { ...baseTest, name: 'Win Test', totalRunsA: 20, successA: 18, totalRunsB: 20, successB: 10 };
+    it('should declare A the winner when rateA exceeds rateB by more than 15%', async () => {
+      const test = {
+        ...baseTest,
+        name: 'Win Test',
+        totalRunsA: 20,
+        successA: 18,
+        totalRunsB: 20,
+        successB: 10,
+      };
       await (service as any).checkWinner('test-1', test);
-      expect(mockPrisma.strategyTest.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ winner: 'A', status: 'completed' }),
-        }),
-      );
+      expect(mockRepo.declareWinner).toHaveBeenCalledWith('test-1', 'A');
     });
 
-    it('should not declare winner when diff ≤15%', async () => {
-      mockPrisma.strategyTest.update.mockResolvedValue({});
-      const test = { ...baseTest, totalRunsA: 20, successA: 12, totalRunsB: 20, successB: 11 };
+    it('should not declare a winner when the difference is within 15%', async () => {
+      const test = {
+        ...baseTest,
+        totalRunsA: 20,
+        successA: 12,
+        totalRunsB: 20,
+        successB: 11,
+      };
       await (service as any).checkWinner('test-1', test);
-      expect(mockPrisma.strategyTest.update).not.toHaveBeenCalled();
+      expect(mockRepo.declareWinner).not.toHaveBeenCalled();
     });
   });
 
   describe('calculateSignificance', () => {
-    it('should return 0 when sample size < 5', () => {
+    it('should return 0 when a sample size is < 5', () => {
       const result = (service as any).calculateSignificance(3, 80, 4, 60);
       expect(result).toBe(0);
     });
 
-    it('should return a value between 0 and 1', () => {
+    it('should return a value between 0 and 1 for adequate samples', () => {
       const result = (service as any).calculateSignificance(50, 85, 50, 60);
       expect(result).toBeGreaterThanOrEqual(0);
       expect(result).toBeLessThanOrEqual(1);
     });
 
-    it('should return 0 when se is 0', () => {
+    it('should return 0 when the standard error is 0', () => {
       const result = (service as any).calculateSignificance(10, 100, 10, 100);
       expect(result).toBe(0);
     });

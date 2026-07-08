@@ -17,11 +17,13 @@ import sys
 from pathlib import Path
 
 import redis.asyncio as redis
+import uvicorn
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from playwright.async_api import async_playwright
 
 from events import EventPublisher, PY_JOB_LIST, PY_ALIVE_KEY
 from executor import run_job
+from http_api.app import create_app
 
 # ---------------------------------------------------------------------------
 # Agent registry (informational — agents are loaded lazily by the skill layer)
@@ -164,9 +166,11 @@ def _load_env() -> None:
       1. Already-set process env (forwarded by dev.mjs or the OS)
       2. apps/browser-py/.env  — engine-specific overrides
       3. <repo-root>/.env      — shared defaults
-      4. apps/backend/.env     — infra creds (REDIS_*) only, filled in last
-         so the backend's remote Redis host/port/password are used when not
-         overridden by the caller.
+      4. apps/backend/.env     — infra creds (REDIS_*, DATABASE_URL, JWT_SECRET)
+         only, filled in last. Domains ported off the Node backend (db/,
+         http_api/) talk to the SAME Postgres database and verify the SAME
+         JWT_SECRET the backend issues tokens with, so these must be the
+         backend's actual values, not independently configured ones.
     """
     here = Path(__file__).resolve().parent
     # Snapshot the REAL process env (OS / dev.mjs) BEFORE loading any file, so an
@@ -189,10 +193,12 @@ def _load_env() -> None:
                 continue
             os.environ.setdefault(key, value)
 
-    # Backend .env is authoritative for Redis infra credentials, so for REDIS_*
-    # keys it OVERRIDES any value seeded from the .env files above (but a real
+    # Backend .env is authoritative for Redis infra credentials plus the
+    # Postgres connection string and JWT signing secret, so for these keys it
+    # OVERRIDES any value seeded from the .env files above (but a real
     # OS/dev.mjs override still wins). This is what lets the engine reach the
-    # same authenticated Redis the backend uses.
+    # same authenticated Redis, same Postgres database, and verify the same
+    # JWTs the backend issues.
     backend_env = here.parent / "backend" / ".env"
     if backend_env.exists():
         for line in backend_env.read_text(encoding="utf-8").splitlines():
@@ -201,7 +207,9 @@ def _load_env() -> None:
                 continue
             key, _, value = line.partition("=")
             key, value = key.strip(), value.strip()
-            if key.startswith("REDIS_") and value and key not in _os_provided:
+            value = value.strip('"').strip("'")
+            shared_keys = key.startswith("REDIS_") or key in ("DATABASE_URL", "JWT_SECRET")
+            if shared_keys and value and key not in _os_provided:
                 os.environ[key] = value
 
 
@@ -239,69 +247,20 @@ async def _heartbeat(client: "redis.Redis") -> None:
         await asyncio.sleep(5)
 
 
-async def _health_server(client: "redis.Redis") -> None:
-    """Lightweight HTTP health endpoint at :8000/health using only stdlib asyncio.
-
-    Returns JSON: {status, service, redis: {status, latencyMs}, activeJobs}
-    No extra pip deps — asyncio.start_server is part of the Python stdlib.
+async def _api_server(client: "redis.Redis") -> None:
+    """FastAPI app (http_api/app.py) exposing /health plus domains ported off
+    the Node backend (media/ so far), served on the same port the old
+    stdlib-only health server used — one HTTP server, one port, one env var.
     """
-    async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        try:
-            first_line = await asyncio.wait_for(reader.readline(), timeout=2.0)
-            while True:
-                hdr = await asyncio.wait_for(reader.readline(), timeout=2.0)
-                if hdr in (b"\r\n", b"\n", b""):
-                    break
-            decoded = first_line.decode(errors="replace")
-            parts = decoded.split(" ")
-            path = parts[1].split("?")[0] if len(parts) > 1 else "/"
-
-            if path == "/health":
-                t0 = asyncio.get_event_loop().time()
-                try:
-                    await asyncio.wait_for(client.ping(), timeout=2.0)
-                    redis_ms = round((asyncio.get_event_loop().time() - t0) * 1000)
-                    redis_ok = True
-                except Exception:
-                    redis_ms = None
-                    redis_ok = False
-                body = json.dumps({
-                    "status": "up" if redis_ok else "degraded",
-                    "service": "browser-py",
-                    "redis": {"status": "up" if redis_ok else "down", "latencyMs": redis_ms},
-                    "activeJobs": len(_active_jobs),
-                }).encode()
-                status_line = b"200 OK"
-            else:
-                body = b'{"error":"not found"}'
-                status_line = b"404 Not Found"
-
-            writer.write(
-                b"HTTP/1.1 " + status_line + b"\r\n"
-                b"Content-Type: application/json\r\n"
-                b"Access-Control-Allow-Origin: *\r\n"
-                b"Connection: close\r\n"
-                b"Content-Length: " + str(len(body)).encode() + b"\r\n"
-                b"\r\n" + body
-            )
-            await writer.drain()
-        except Exception:
-            pass
-        finally:
-            try:
-                writer.close()
-                await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
-            except Exception:
-                pass
-
     port = int(os.environ.get("BROWSER_PY_HEALTH_PORT", "8000"))
+    app = create_app(client, _active_jobs)
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
     try:
-        server = await asyncio.start_server(_handle, "127.0.0.1", port, reuse_address=True)
-        log.info("Health endpoint → http://localhost:%d/health", port)
-        async with server:
-            await server.serve_forever()
+        log.info("HTTP API → http://localhost:%d (health, media)", port)
+        await server.serve()
     except OSError as exc:
-        log.warning("Health server could not bind :%d — %s (continuing without it)", port, exc)
+        log.warning("API server could not bind :%d — %s (continuing without it)", port, exc)
 
 
 async def _handle_job(job: dict, publisher: EventPublisher, pw) -> None:
@@ -331,7 +290,7 @@ async def main() -> None:
     client = _redis_client()
     publisher = EventPublisher(client)
     asyncio.create_task(_heartbeat(client))
-    asyncio.create_task(_health_server(client))
+    asyncio.create_task(_api_server(client))
     from browser_manager import run_profile_gc_loop
     asyncio.create_task(run_profile_gc_loop())
 

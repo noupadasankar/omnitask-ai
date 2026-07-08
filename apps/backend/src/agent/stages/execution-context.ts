@@ -23,6 +23,11 @@ export enum PipelineExitReason {
   SIMULATION_COMPLETED = 'simulation_completed',
   ADAPTER_COMPLETED = 'adapter_completed',
   WORKER_DISPATCHED = 'worker_dispatched',
+  // Version A — Prepare & Confirm
+  PENDING_USER_CONFIRMATION = 'pending_user_confirmation',
+  CONFIRMATION_EXPIRED = 'confirmation_expired',
+  CONFIRMATION_REJECTED = 'confirmation_rejected',
+  CONFIRMATION_EDITED_AND_APPROVED = 'confirmation_edited_and_approved',
 }
 
 export class ExecutionContext {

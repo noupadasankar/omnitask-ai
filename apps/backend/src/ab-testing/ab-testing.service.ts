@@ -1,68 +1,60 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+// apps/backend/src/ab-testing/ab-testing.service.ts
+//
+// Business logic for ab-testing — identical behavior to the old NestJS
+// AbTestingService (running average-duration math, checkWinner threshold logic,
+// getResults rate/significance formatting, z-score significance), now injectable
+// via Inversify and delegating all persistence to AbTestingRepository. Holds no
+// '@prisma/client' access.
 
-export interface CreateTestDto {
-  name: string;
-  description?: string;
-  strategyA: Record<string, unknown>;
-  strategyB: Record<string, unknown>;
-}
+import { injectable, inject } from 'inversify';
+import { TYPES } from '../core/container';
+import { AbTestingRepository } from './ab-testing.repository';
+import type {
+  AbTestResults,
+  CreateTestInput,
+  RecordRunInput,
+  StrategyTestRecord,
+} from './ab-testing.model';
 
-export interface RecordRunDto {
-  variant: 'A' | 'B';
-  success: boolean;
-  durationMs: number;
-}
-
-@Injectable()
+@injectable()
 export class AbTestingService {
-  private readonly logger = new Logger(AbTestingService.name);
+  constructor(
+    @inject(TYPES.AbTestingRepository) private readonly repo: AbTestingRepository,
+  ) {}
 
-  constructor(private prisma: PrismaService) {}
-
-  async createTest(userId: string, dto: CreateTestDto) {
-    return this.prisma.strategyTest.create({
-      data: {
-        userId,
-        name: dto.name,
-        description: dto.description,
-        strategyA: dto.strategyA as Prisma.InputJsonValue,
-        strategyB: dto.strategyB as Prisma.InputJsonValue,
-        status: 'active',
-      },
-    });
+  async createTest(userId: string, dto: CreateTestInput) {
+    return this.repo.createTest(userId, dto);
   }
 
-  async recordRun(testId: string, dto: RecordRunDto) {
-    const test = await this.prisma.strategyTest.findUnique({ where: { id: testId } });
+  async recordRun(testId: string, dto: RecordRunInput) {
+    const test = await this.repo.findTest(testId);
     if (!test || test.status !== 'active') return null;
 
-    const field = dto.variant === 'A' ? 'totalRunsA' : 'totalRunsB';
+    const runField = dto.variant === 'A' ? 'totalRunsA' : 'totalRunsB';
     const successField = dto.variant === 'A' ? 'successA' : 'successB';
     const durationField = dto.variant === 'A' ? 'avgDurationA' : 'avgDurationB';
 
-    const currentRuns = test[field];
+    const currentRuns = test[runField];
     const currentAvgDuration = test[durationField];
-    const newAvg = currentRuns > 0
-      ? (currentAvgDuration * currentRuns + dto.durationMs) / (currentRuns + 1)
-      : dto.durationMs;
+    const newAvgDuration =
+      currentRuns > 0
+        ? (currentAvgDuration * currentRuns + dto.durationMs) / (currentRuns + 1)
+        : dto.durationMs;
 
-    const updated = await this.prisma.strategyTest.update({
-      where: { id: testId },
-      data: {
-        [field]: { increment: 1 },
-        [successField]: dto.success ? { increment: 1 } : undefined,
-        [durationField]: newAvg,
-      },
+    const updated = await this.repo.applyRun(testId, {
+      runField,
+      successField,
+      durationField,
+      newAvgDuration,
+      incrementSuccess: dto.success,
     });
 
     await this.checkWinner(testId, updated);
     return updated;
   }
 
-  async getResults(testId: string) {
-    const test = await this.prisma.strategyTest.findUnique({ where: { id: testId } });
+  async getResults(testId: string): Promise<AbTestResults | null> {
+    const test = await this.repo.findTest(testId);
     if (!test) return null;
 
     const rateA = test.totalRunsA > 0 ? (test.successA / test.totalRunsA) * 100 : 0;
@@ -90,13 +82,10 @@ export class AbTestingService {
   }
 
   async listActive(userId: string) {
-    return this.prisma.strategyTest.findMany({
-      where: { userId, status: 'active' },
-      orderBy: { startedAt: 'desc' },
-    });
+    return this.repo.listActiveByUser(userId);
   }
 
-  private async checkWinner(testId: string, test: any) {
+  private async checkWinner(testId: string, test: StrategyTestRecord) {
     if (test.totalRunsA < 10 || test.totalRunsB < 10) return;
 
     const rateA = test.successA / test.totalRunsA;
@@ -105,11 +94,8 @@ export class AbTestingService {
 
     if (diff > 0.15 && (rateA > rateB || rateB > rateA)) {
       const winner = rateA > rateB ? 'A' : 'B';
-      await this.prisma.strategyTest.update({
-        where: { id: testId },
-        data: { winner, status: 'completed', completedAt: new Date() },
-      });
-      this.logger.log(`Test "${test.name}" completed: Winner = Variant ${winner}`);
+      await this.repo.declareWinner(testId, winner);
+      console.log(`Test "${test.name}" completed: Winner = Variant ${winner}`);
     }
   }
 

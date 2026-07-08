@@ -18,15 +18,11 @@ import { LoggerModule } from './common/logger/logger.module';
 import { MetricsModule } from './common/metrics/prometheus.module';
 import { RolesGuard } from './common/guards/roles.guard';
 
-import { FeedbackModule } from './feedback/feedback.module';
-import { AbTestingModule } from './ab-testing/ab-testing.module';
 
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
 import { TasksModule } from './tasks/tasks.module';
-import { FilesModule } from './files/files.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { ExecutionEventBusModule } from './event-bus/execution-event-bus.module';
 
@@ -34,20 +30,16 @@ import { PlanningModule } from './planning/planning.module';
 import { ExecutionModule } from './execution/execution.module';
 import { MemoryModule } from './memory/memory.module';
 import { AgentModule } from './agent/agent.module';
-import { JobModule } from './job/job.module';
-import { ShoppingModule } from './shopping/shopping.module';
-import { SocialModule } from './social/social.module';
-import { TravelModule } from './travel/travel.module';
 import { FoodModule } from './food/food.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { DigitalTwinModule } from './digital-twin/digital-twin.module';
 import { HealthModule } from './health/health.module';
 import { EmailModule } from './email/email.module';
-import { MediaModule } from './media/media.module';
 import { VaultModule } from './vault/vault.module';
 import { VoiceModule } from './voice/voice.module';
 
 import { AuditModule } from './audit/audit.module';
+import { ConfirmationModule } from './confirmation/confirmation.module';
 import { AdminModule } from './admin/admin.module';
 import { BillingModule } from './billing/billing.module';
 import { GdprModule } from './gdpr/gdpr.module';
@@ -86,9 +78,7 @@ import { AppService } from './app.service';
     MetricsModule,
 
     AuthModule,
-    UsersModule,
     TasksModule,
-    FilesModule,
     WebsocketModule,
     ExecutionEventBusModule,
 
@@ -96,25 +86,19 @@ import { AppService } from './app.service';
     ExecutionModule,
     MemoryModule,
     AgentModule,
-    JobModule,
-    ShoppingModule,
-    SocialModule,
-    TravelModule,
     FoodModule,
     DigitalTwinModule,
     HealthModule,
     CalendarModule,
     EmailModule,
-    MediaModule,
     VaultModule,
     VoiceModule,
-    FeedbackModule,
-    AbTestingModule,
     AuditModule,
     AdminModule,
     BillingModule,
     GdprModule,
     TeamsModule,
+    ConfirmationModule,
   ],
   controllers: [AppController],
   providers: [

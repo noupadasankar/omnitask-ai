@@ -3,3 +3,16 @@ redis>=5.0.0
 openai>=1.30.0
 # Note: the job agent's cognitive engine is fully local (Ollama via stdlib HTTP) —
 # no anthropic/openai cloud key is needed for it. See agents/job_agent/requirements.txt.
+
+# HTTP layer (http_api/) — replaces the old raw-socket health server with a
+# real ASGI app so domains ported off the Node backend (starting with media/)
+# can expose routes without hand-rolling HTTP parsing.
+fastapi>=0.115.0
+uvicorn>=0.32.0
+# Direct Postgres access for ported domains (db/) — same Prisma-owned tables,
+# no migrations run from here. See CLAUDE.md's pgvector-drift precedent.
+asyncpg>=0.30.0
+# Verifies the same Bearer JWTs the Node backend issues (JWT_SECRET, HS256).
+pyjwt>=2.9.0
+# Multipart form parsing for file uploads (job résumé upload) via FastAPI UploadFile.
+python-multipart>=0.0.9

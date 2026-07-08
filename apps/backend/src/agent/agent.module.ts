@@ -65,6 +65,7 @@ import { MockBrowserProvider } from './providers/mock-browser-provider.service';
 // ─── Phase 2: Pipeline Stage Classes ──────────────────────────────────────
 import { ExecutionPipelineService } from './stages/execution-pipeline.service';
 import { PolicyCheckStage } from './stages/policy-check-stage.service';
+import { ConfirmationGateStage } from './stages/confirmation-gate-stage.service';
 import { VerificationStage } from './stages/verification-stage.service';
 import { MemoryStage } from './stages/memory-stage.service';
 import { ReflectionStage } from './stages/reflection-stage.service';
@@ -144,6 +145,7 @@ import { WorldStateSensor } from './stages/world-state-sensor.service';
     // ─── Phase 2: Pipeline Stage Classes ───────────────────────────────────
     ExecutionPipelineService,
     PolicyCheckStage,
+    ConfirmationGateStage,
     VerificationStage,
     MemoryStage,
     ReflectionStage,

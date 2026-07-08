@@ -1,111 +1,65 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CacheService } from '../cache/cache.service';
-import { UpdateUserDto } from './dto/update-user.dto';
+// apps/backend/src/users/users.service.ts
+//
+// Business logic for users — same behavior as the old NestJS UsersService,
+// now injectable via Inversify and delegating persistence to UsersRepository.
+//
+// The old CacheService dependency was intentionally dropped: it only cached
+// findOne() (which has no route/callers, so the cache key was never populated)
+// and issued cache.del() no-ops in update/remove. Removing it changes no
+// observable behavior — the service now depends on the repository only.
+
+import { injectable, inject } from 'inversify';
 import * as bcrypt from 'bcryptjs';
+import { TYPES } from '../core/container';
+import { HttpError } from '../core/http/error.middleware';
+import { UsersRepository } from './users.repository';
+import type { UpdateUserInput } from './users.model';
 
-@Injectable()
+@injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly cache: CacheService,
+    @inject(TYPES.UsersRepository) private readonly repo: UsersRepository,
   ) {}
 
-  // 📦 Reusable select (clean architecture)
-  private userSelect = {
-    id: true,
-    email: true,
-    name: true,
-    role: true,
-    createdAt: true,
-    updatedAt: true,
-  };
-
-  private userCacheKey(id: string): string {
-    return `user:${id}`;
+  findAll() {
+    return this.repo.findAll();
   }
 
-  async findAll() {
-    return this.prisma.user.findMany({
-      select: this.userSelect,
-    });
-  }
-
-  async findOne(id: string) {
-    const cacheKey = this.userCacheKey(id);
-    const cached = await this.cache.get<any>(cacheKey);
-    if (cached) return cached;
-
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: this.userSelect,
-    });
-
+  async update(id: string, dto: UpdateUserInput) {
+    const user = await this.repo.findById(id);
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new HttpError(404, `User with ID ${id} not found`);
     }
 
-    await this.cache.set(cacheKey, user, 300_000);
-    return user;
-  }
-
-  async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
-
-    const data: any = {};
+    const data: { name?: string; email?: string; passwordHash?: string } = {};
 
     // 👤 Basic fields
-    if (updateUserDto.name !== undefined) {
-      data.name = updateUserDto.name;
+    if (dto.name !== undefined) {
+      data.name = dto.name;
     }
 
     // 📧 Email uniqueness check
-    if (updateUserDto.email !== undefined) {
-      const existingUser = await this.prisma.user.findUnique({
-        where: { email: updateUserDto.email },
-      });
-
+    if (dto.email !== undefined) {
+      const existingUser = await this.repo.findByEmail(dto.email);
       if (existingUser && existingUser.id !== id) {
-        throw new BadRequestException('Email already in use');
+        throw new HttpError(400, 'Email already in use');
       }
-
-      data.email = updateUserDto.email;
+      data.email = dto.email;
     }
 
-    // 🔐 Password update (FIXED FIELD)
-    if (updateUserDto.password !== undefined) {
-      data.passwordHash = await bcrypt.hash(updateUserDto.password, 10);
+    // 🔐 Password update (hashed to passwordHash)
+    if (dto.password !== undefined) {
+      data.passwordHash = await bcrypt.hash(dto.password, 10);
     }
 
-    const result = await this.prisma.user.update({
-      where: { id },
-      data,
-      select: this.userSelect,
-    });
-
-    await this.cache.del(this.userCacheKey(id));
-    return result;
+    return this.repo.updateUser(id, data);
   }
 
   async remove(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-
+    const user = await this.repo.findById(id);
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new HttpError(404, `User with ID ${id} not found`);
     }
-
-    const result = await this.prisma.user.delete({
-      where: { id },
-      select: this.userSelect,
-    });
-
-    await this.cache.del(this.userCacheKey(id));
-    return result;
+    return this.repo.deleteUser(id);
   }
 }

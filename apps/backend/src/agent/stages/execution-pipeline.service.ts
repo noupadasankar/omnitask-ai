@@ -6,6 +6,7 @@ import { ExecutionContext, PipelineExitReason } from './execution-context';
 import { IExecutionStage } from './execution-stage.interface';
 import { GoalPlanningStage } from './goal-planning-stage.service';
 import { PolicyCheckStage } from './policy-check-stage.service';
+import { ConfirmationGateStage } from './confirmation-gate-stage.service';
 import { AutomationGateStage } from './automation-gate-stage.service';
 import { WorkerDispatchStage } from './worker-dispatch-stage.service';
 import { StepExecutionStage } from './step-execution-stage.service';
@@ -22,6 +23,7 @@ export class ExecutionPipelineService {
   constructor(
     private readonly goalPlanningStage: GoalPlanningStage,
     private readonly policyCheckStage: PolicyCheckStage,
+    private readonly confirmationGateStage: ConfirmationGateStage,
     private readonly automationGateStage: AutomationGateStage,
     private readonly workerDispatchStage: WorkerDispatchStage,
     private readonly stepExecutionStage: StepExecutionStage,
@@ -48,6 +50,10 @@ export class ExecutionPipelineService {
       if (ctx.exitReason) return;
 
       await this.policyCheckStage.execute(ctx);
+      if (ctx.exitReason) return;
+
+      // Version A — Prepare & Confirm: gate HIGH/CRITICAL domain actions before execution
+      await this.confirmationGateStage.execute(ctx);
       if (ctx.exitReason) return;
 
       await this.automationGateStage.execute(ctx);

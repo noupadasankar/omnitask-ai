@@ -53,4 +53,8 @@ export interface ExecutionEventMap {
   'subgoal:requeued': { planId: string; sessionId: string; timestamp: number; data: { subGoalId: string; retryCount: number; maxRetries: number } };
   'subgoal:completed': { planId: string; sessionId: string; timestamp: number; data: { subGoalId: string; success: boolean; error?: string } };
   'subgoal:failed': { planId: string; sessionId: string; timestamp: number; data: { subGoalId: string; error: string } };
+  // Version A — Prepare & Confirm
+  'confirmation:required': { pendingActionId: string; domain: string; risk: string; summary: Record<string, unknown>; editableFields: Record<string, unknown>[]; confidenceScore: number; expiresAt: string };
+  'confirmation:confirmed': { pendingActionId: string; taskId: string | null | undefined };
+  'confirmation:rejected': { pendingActionId: string };
 }

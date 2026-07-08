@@ -262,6 +262,7 @@ model Task {
   approvals         ApprovalRequest[]
   files             File[]
   executionSessions ExecutionSession[]
+  pendingActions    PendingAction[]
 
   @@index([userId, status])
   @@index([userId, createdAt])
@@ -348,6 +349,7 @@ model ExecutionSession {
   steps             AgentExecutionStep[]
   screenshots       Screenshot[]
   approvalRequests  ApprovalRequest[]
+  pendingActions    PendingAction[]
 
   @@index([taskId])
   @@index([userId])
@@ -1085,6 +1087,67 @@ model PlaceBooking {
   partySize   Int?
   status      String   @default("pending")
   createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─── Version A: Prepare & Confirm ───────────────────────────────────────────────
+
+enum PendingActionType {
+  JOB_APPLICATION
+  FOOD_ORDER
+  PRODUCT_PURCHASE
+  TRAVEL_BOOKING
+  SOCIAL_POST
+  EMAIL_SEND
+  CALENDAR_EVENT
+  FILE_OPERATION
+  GENERAL_HIGH_RISK
+}
+
+enum PendingActionStatus {
+  AWAITING_CONFIRMATION
+  EDITED
+  CONFIRMED
+  REJECTED
+  EXPIRED
+}
+
+model PendingAction {
+  id               String              @id @default(uuid())
+  userId           String
+  taskId           String?
+  sessionId        String?
+  actionType       PendingActionType
+  summaryJson      Json
+  rawPayloadJson   Json
+  editableFields   Json                @default("[]")
+  confidenceScore  Int                 @default(80)
+  status           PendingActionStatus @default(AWAITING_CONFIRMATION)
+  expiresAt        DateTime
+  createdAt        DateTime            @default(now())
+  confirmedAt      DateTime?
+  rejectedAt       DateTime?
+
+  task    Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  session ExecutionSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  receipt ExecutionReceipt?
+
+  @@index([userId, status])
+  @@index([taskId])
+  @@index([sessionId])
+}
+
+model ExecutionReceipt {
+  id              String        @id @default(uuid())
+  pendingActionId String        @unique
+  userId          String
+  outcome         String
+  detailsJson     Json
+  notifiedVia     String[]
+  executedAt      DateTime      @default(now())
+
+  pendingAction PendingAction @relation(fields: [pendingActionId], references: [id])
 
   @@index([userId])
 }

@@ -17,6 +17,14 @@ import { EtagInterceptor } from './common/interceptors/etag.interceptor';
 import { PinoLoggerService } from './common/logger/pino-logger.service';
 import { initSentry, setupSentryErrorHandler } from './sentry';
 import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import 'reflect-metadata';
+import { bootstrapContainer } from './core/container-bootstrap';
+import { buildFeedbackRouter } from './feedback/feedback.routes';
+import { buildAbTestingRouter } from './ab-testing/ab-testing.routes';
+import { buildUsersRouter } from './users/users.routes';
+import { buildFilesRouter } from './files/files.routes';
+import { errorMiddleware } from './core/http/error.middleware';
 
 const WEAK_SECRET_PATTERNS = [
   'change_this_to_minimum_32_char_random_string_now',
@@ -86,6 +94,72 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.use(helmet());
+
+  // Reverse proxies to browser-py's routes for domains ported off this backend
+  // (see MIGRATION-PLAN.md). Mounted before the body parsers below so the
+  // request stream reaches the proxy untouched instead of being consumed into
+  // req.body first. Note: app.use('/api/<d>', ...) strips the mount prefix from
+  // req.url before the middleware sees it (e.g. '/search?q=x'), so the rewrite
+  // only re-adds the Python side's '/<d>' prefix — matching '^/api/<d>' never fires.
+  const pythonAgentUrl = process.env.PYTHON_AGENT_URL || 'http://localhost:8000';
+  app.use(
+    '/api/media',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathRewrite: { '^/': '/media/' },
+    }),
+  );
+  app.use(
+    '/api/travel',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathRewrite: { '^/': '/travel/' },
+    }),
+  );
+  app.use(
+    '/api/social',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathRewrite: { '^/': '/social/' },
+    }),
+  );
+  app.use(
+    '/api/job',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathRewrite: { '^/': '/job/' },
+    }),
+  );
+  app.use(
+    '/api/shopping',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathRewrite: { '^/': '/shopping/' },
+    }),
+  );
+  // food is a SPLIT domain: only /recipe and /orders were ported to Python;
+  // /restaurants, /availability, /book stay in the Nest food controller (they
+  // need PlacesService). pathFilter proxies only the ported paths; everything
+  // else returns false and falls through to Nest. The filter normalizes the
+  // path so it works whether it sees the stripped ('/recipe') or full form.
+  app.use(
+    '/api/food',
+    createProxyMiddleware({
+      target: pythonAgentUrl,
+      changeOrigin: true,
+      pathFilter: (pathname: string) => {
+        const p = pathname.replace(/^\/api\/food/, '');
+        return p.startsWith('/recipe') || p.startsWith('/orders');
+      },
+      pathRewrite: { '^/': '/food/' },
+    }),
+  );
+
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
@@ -117,6 +191,20 @@ async function bootstrap() {
     if (auth.startsWith('Bearer ')) return next();
     doubleCsrfProtection(req, res, next);
   });
+
+  // ── Express + Inversify migrated modules ──────────────────────────
+  // Modules converted off NestJS (see MIGRATION-PLAN.md) are mounted here
+  // as plain Express sub-routers on the same running app/port. Each one
+  // binds its repository/service into the shared root container via
+  // bootstrapContainer(), then is wired in below.
+  await bootstrapContainer();
+  app.use('/api/feedback', buildFeedbackRouter());
+  app.use('/api/ab-testing', buildAbTestingRouter());
+  app.use('/api/users', buildUsersRouter());
+  app.use('/api/files', buildFilesRouter());
+  // Catches errors thrown by the migrated sub-routers above (Nest's
+  // AllExceptionsFilter only sees Nest-routed requests, not these).
+  app.use(errorMiddleware);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Omnitask API')

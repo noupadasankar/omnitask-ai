@@ -12,12 +12,10 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FoodService } from './food.service';
-import { GenerateRecipeSchema, CreateOrderSchema } from './dto/food.dto';
-import type { GenerateRecipeDto, CreateOrderDto } from './dto/food.dto';
-import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { CursorPaginationSchema } from '../common/dto/pagination.dto';
-import type { CursorPaginationDto } from '../common/dto/pagination.dto';
 
+// The Places-dependent food routes stay in NestJS (PlacesService is Node infra
+// with API keys). The recipe + orders routes were ported to browser-py and are
+// reverse-proxied there from main.ts (pathFilter on /api/food/recipe|/orders).
 @Controller('food')
 @UseGuards(JwtAuthGuard)
 export class FoodController {
@@ -33,40 +31,6 @@ export class FoodController {
       lat ? Number(lat) : undefined,
       lng ? Number(lng) : undefined,
       diet,
-    );
-  }
-
-  @Post('recipe')
-  async generateRecipe(
-    @Request() req: any,
-    @Body(new ZodValidationPipe(GenerateRecipeSchema)) body: GenerateRecipeDto,
-  ) {
-    return this.foodService.generateRecipe(
-      req.user.id,
-      body.ingredients,
-      body.dietPreference,
-    );
-  }
-
-  @Get('orders')
-  async listOrders(
-    @Request() req: any,
-    @Query(new ZodValidationPipe(CursorPaginationSchema)) query: CursorPaginationDto,
-  ) {
-    return this.foodService.listOrders(req.user.id, query.cursor, query.take);
-  }
-
-  @Post('orders')
-  async createOrder(
-    @Request() req: any,
-    @Body(new ZodValidationPipe(CreateOrderSchema)) body: CreateOrderDto,
-  ) {
-    return this.foodService.createOrder(
-      req.user.id,
-      body.platform,
-      body.restaurantName,
-      body.items,
-      body.totalAmount,
     );
   }
 
