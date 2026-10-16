@@ -215,71 +215,97 @@ omnitask-ai/                                 # Turborepo + pnpm monorepo root
 
 ### Prerequisites
 
-Ensure the following runtimes are installed on your machine:
-- **Node.js**: `v20.x` or higher
+Ensure the following runtimes and tools are installed on your machine:
+- **Node.js**: `v20.x` or higher ([nodejs.org](https://nodejs.org))
 - **pnpm**: `v8.x` or higher (`npm install -g pnpm`)
-- **Python**: `v3.10` or higher
-- **Docker**: Docker Desktop or Engine with Docker Compose
-- **LLM API Key**: [Groq Console](https://console.groq.com) (Recommended, free tier) or OpenAI / OpenRouter
+- **Python**: `v3.10` or higher ([python.org](https://python.org))
+- **Docker**: Docker Desktop or Docker Engine with Docker Compose ([docker.com](https://www.docker.com))
+- **LLM API Key**: [Groq Console](https://console.groq.com) (Recommended free tier) or OpenAI / OpenRouter
 
-### 1. Clone & Setup Environment
+---
+
+### Step 1: Clone Repository & Configure Environment
+
+Clone the repository and create your local environment configuration:
 
 ```bash
 # Clone the repository
 git clone https://github.com/noupadasankar/omnitask-ai.git
 cd omnitask-ai
 
-# Copy root environment variables
+# Copy the sample environment file
 cp .env.example .env
 ```
 
-Ensure your `.env` contains valid credentials:
+Open `.env` and fill in your local values (no secrets are hardcoded in the codebase):
+
 ```env
-DATABASE_URL=postgresql://omnitask:omnitask_secret@localhost:5432/omnitask
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=super-secret-development-jwt-token-key-32-chars
-GROQ_API_KEY=gsk_your_groq_api_key_here
+# Database & Cache Configuration
+DATABASE_URL="postgresql://<DB_USER>:<DB_PASSWORD>@localhost:5432/<DB_NAME>"
+REDIS_URL="redis://localhost:6379"
+
+# Authentication Secret (Generate with: openssl rand -hex 32)
+JWT_SECRET="<YOUR_SECURE_JWT_SECRET>"
+
+# LLM Provider Configuration
+GROQ_API_KEY="<YOUR_GROQ_API_KEY>"
+# OPENAI_API_KEY="<YOUR_OPTIONAL_OPENAI_KEY>"
+# OPENROUTER_API_KEY="<YOUR_OPTIONAL_OPENROUTER_KEY>"
 ```
 
-### 2. Start Core Infrastructure
+---
 
-Start PostgreSQL 16 and Redis 7 in detached containers:
+### Step 2: Start Core Infrastructure
+
+Start PostgreSQL 16 and Redis 7 in detached Docker containers:
+
 ```bash
 pnpm infra
 ```
 
-### 3. Install Dependencies & Initialize Database
+*(To stop the background containers when finished: `pnpm infra:down`)*
+
+---
+
+### Step 3: Install Dependencies & Initialize Database
+
+Install dependencies across all workspaces, download browser automation engines, and initialize the database schema:
 
 ```bash
-# Install Node workspace dependencies
+# 1. Install Node workspace dependencies
 pnpm install
 
-# Install Python automation dependencies
+# 2. Install Python engine dependencies
 pip install -r apps/browser-py/requirements.txt
 
-# Install Playwright browser binaries
+# 3. Install Playwright browser binaries
 python -m playwright install chromium
 
-# Generate Prisma Client and sync database schema
+# 4. Generate Prisma Client and push schema to database
 pnpm db:push
 ```
 
-### 4. Run the Full Stack
+---
 
-Launch all services concurrently with one command:
+### Step 4: Run the Full Stack
+
+Launch all services (NestJS backend, Next.js frontend, and Python automation worker) concurrently:
+
 ```bash
 pnpm stack
 ```
 
 *(Alternatively, run services individually in dedicated terminals: `pnpm dev:backend`, `pnpm dev:frontend`, and `pnpm dev:browser-py`)*
 
-### 5. Access the Platform
+---
 
-| Application | Address | Purpose |
+### Step 5: Access the Platform
+
+| Service | URL | Purpose |
 |---|---|---|
 | **Web Dashboard** | [http://localhost:3000](http://localhost:3000) | Interactive mission control & live browser streaming |
-| **Backend REST API** | [http://localhost:4000/api](http://localhost:4000/api) | NestJS application endpoints |
-| **API Documentation** | [http://localhost:4000/docs](http://localhost:4000/docs) | Interactive Swagger OpenAPI specification |
+| **Backend API** | [http://localhost:4000/api](http://localhost:4000/api) | NestJS application endpoints |
+| **Swagger API Docs** | [http://localhost:4000/docs](http://localhost:4000/docs) | Interactive Swagger OpenAPI specification |
 | **Health Checks** | [http://localhost:4000/api/health](http://localhost:4000/api/health) | System, database, and Redis health probes |
 
 ---
