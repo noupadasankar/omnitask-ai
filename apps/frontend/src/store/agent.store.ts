@@ -19,7 +19,6 @@ export type AgentPhase =
   | 'executing'
   | 'paused'
   | 'waiting_clarification'
-  | 'waiting_clarification'
   | 'waiting_approval'
   | 'waiting_otp'
   | 'completed'
@@ -191,6 +190,9 @@ interface AgentStore {
   setMatchedSkills: (skills: string[]) => void;
   setUserPreferences: (prefs: AgentStore['userPreferences']) => void;
 
+  headfulMode: boolean;
+  setHeadfulMode: (v: boolean) => void;
+
   reset: () => void;
 }
 
@@ -230,6 +232,7 @@ const initialState = {
   routedDomain: null as string | null,
   matchedSkills: [] as string[],
   userPreferences: null as AgentStore['userPreferences'],
+  headfulMode: false,
 };
 
 export const useAgentStore = create<AgentStore>((set) => ({
@@ -305,6 +308,9 @@ export const useAgentStore = create<AgentStore>((set) => ({
   setRoutedDomain: (routedDomain) => set({ routedDomain }),
   setMatchedSkills: (matchedSkills) => set({ matchedSkills }),
   setUserPreferences: (userPreferences) => set({ userPreferences }),
+
+  headfulMode: false,
+  setHeadfulMode: (headfulMode) => set({ headfulMode }),
 
   reset: () => set(initialState),
 }));

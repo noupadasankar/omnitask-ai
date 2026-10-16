@@ -259,7 +259,7 @@ async def _api_server(client: "redis.Redis") -> None:
     try:
         log.info("HTTP API → http://localhost:%d (health, media)", port)
         await server.serve()
-    except OSError as exc:
+    except (OSError, SystemExit) as exc:
         log.warning("API server could not bind :%d — %s (continuing without it)", port, exc)
 
 
@@ -295,6 +295,12 @@ async def main() -> None:
     asyncio.create_task(run_profile_gc_loop())
 
     async with async_playwright() as pw:
+        if not headless:
+            log.info("=" * 60)
+            log.info("HEADFUL MODE — Chromium window will open on your desktop")
+            log.info("Watch the automation directly in that Chrome window.")
+            log.info("The dashboard live stream runs in parallel as a backup.")
+            log.info("=" * 60)
         log.info("Python browser engine ready (headless=%s) — listening on %s", headless, PY_JOB_LIST)
         try:
             while True:

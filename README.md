@@ -393,8 +393,8 @@ Never commit `.env` files. All credentials must go through the vault or environm
 Contributions are welcome. Before contributing:
 
 1. Check existing issues before opening a new one
-2. Read `CLAUDE.md` for architecture details and conventions
-3. Run `npx tsc --noEmit` — zero errors before submitting a PR
+2. Review the Architecture and Execution Pipeline sections for system design details
+3. Run `pnpm build` — zero errors before submitting a PR
 4. Run tests — test count must not decrease
 
 ---

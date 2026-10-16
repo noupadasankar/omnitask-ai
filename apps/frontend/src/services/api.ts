@@ -155,11 +155,14 @@ api.interceptors.response.use(
         // Attempt token refresh
         const res = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/refresh`,
-          { refreshToken },
+          { refresh_token: refreshToken },
         );
 
-        const { accessToken } = res.data;
+        const { accessToken, refreshToken: newRefreshToken } = res.data;
         localStorage.setItem('token', accessToken);
+        if (newRefreshToken) {
+          localStorage.setItem('refreshToken', newRefreshToken);
+        }
 
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;

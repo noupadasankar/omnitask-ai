@@ -475,7 +475,7 @@ class NaukriPortal(BasePortal):
             await asyncio.sleep(5)
 
             # ── Cognitive (LLM-first) completion ──────────────────────────────
-            # Hand the open application (its chatbot/questionnaire) to the Claude
+            # Hand the open application (its chatbot/questionnaire) to the cognitive
             # reasoning loop, which answers arbitrary screening questions by meaning.
             # Returns True (submitted) / False (principled skip); None → engine
             # unavailable, fall through to the rule-based form-filler below.

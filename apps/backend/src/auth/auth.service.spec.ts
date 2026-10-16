@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import * as bcrypt from 'bcryptjs';
 
 const mockPrisma = {
@@ -27,6 +29,8 @@ const mockPrisma = {
 
 const mockJwt = { sign: jest.fn(() => 'mock-access-token') };
 const mockConfig = { get: jest.fn((key: string, def?: any) => def) };
+const mockAuditService = { log: jest.fn().mockResolvedValue({}) };
+const mockEventEmitter = { emit: jest.fn() };
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -39,6 +43,8 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: AuditService, useValue: mockAuditService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);

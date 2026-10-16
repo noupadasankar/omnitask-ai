@@ -165,7 +165,7 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  const { doubleCsrfProtection } = doubleCsrf({
+  const { doubleCsrfProtection, generateCsrfToken } = doubleCsrf({
     getSecret: () => csrfSecret ?? '',
     getSessionIdentifier: (req) => req.headers['x-forwarded-for'] as string || req.ip || 'unknown',
     cookieName: 'csrf-token',
@@ -185,6 +185,11 @@ async function bootstrap() {
   // We still protect cookie-only paths (e.g. OAuth callbacks) for belt-and-suspenders.
   const CSRF_EXEMPT = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'];
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Always set CSRF cookie on token retrieval so the frontend can read it
+    if (req.method === 'GET' && req.path === '/api/auth/csrf-token') {
+      generateCsrfToken(req, res);
+      return next();
+    }
     if (CSRF_EXEMPT.includes(req.path)) return next();
     // Bearer token → no CSRF risk; skip the middleware
     const auth = req.headers['authorization'] || '';

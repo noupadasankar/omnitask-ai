@@ -346,7 +346,7 @@ class HiristPortal(BasePortal):
             await asyncio.sleep(4)
 
             # ── Cognitive (LLM-first) completion ──────────────────────────────
-            # Hand the open application to the Claude reasoning loop first; it
+            # Hand the open application to the cognitive reasoning loop first; it
             # completes arbitrary multi-step / screening layouts generically.
             # None → engine unavailable, fall through to the rule-based filler.
             cog = await self._complete_application_cognitively(

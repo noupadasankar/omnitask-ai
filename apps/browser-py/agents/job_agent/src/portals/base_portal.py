@@ -58,7 +58,7 @@ class BasePortal(ABC):
         # dashboard and each submit is gated by approve-before-submit.
         self.bridge = None
 
-        # Cognitive engine — the Claude reasoning loop (LLM-first). None → the
+        # Cognitive engine — the cognitive reasoning loop (LLM-first). None → the
         # rule-based selector flow only. Set by the orchestrator when an
         # ANTHROPIC_API_KEY is configured.
         self.cognition = None
@@ -479,7 +479,7 @@ class BasePortal(ABC):
 
     # ── Cognitive (LLM-first) application path ────────────────────────────────
     #
-    # When a Claude engine is configured, portals hand the brittle, layout-variable
+    # When a cognitive engine is configured, portals hand the brittle, layout-variable
     # part of an application — completing and submitting the form — to the
     # observe→reason→act→verify loop, falling back to their rule-based flow only
     # when the engine is unavailable or fails for a technical reason.

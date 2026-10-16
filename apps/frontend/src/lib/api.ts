@@ -53,7 +53,7 @@ export const authApi = {
   },
 
   refreshToken(refreshToken: string) {
-    return api.post<AuthResponse>('/auth/refresh', { refreshToken });
+    return api.post<AuthResponse>('/auth/refresh', { refresh_token: refreshToken });
   },
 };
 

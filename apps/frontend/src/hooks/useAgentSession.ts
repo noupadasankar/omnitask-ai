@@ -231,6 +231,16 @@ export function useAgentSession(sessionIdParam?: string | null) {
           message: data.message || data.label || 'Browser error',
         });
         break;
+      case 'browser:headful_mode':
+        store.setHeadfulMode(true);
+        store.addLog({
+          id: `headful_${timestamp}`,
+          timestamp,
+          level: 'info',
+          source: 'BrowserAgent',
+          message: 'Headful mode — Chrome window is open on your desktop',
+        });
+        break;
       case 'memory:preferences_applied':
         if (data.preferences) store.setUserPreferences(data.preferences);
         store.addLog({
@@ -380,6 +390,11 @@ export function useAgentSession(sessionIdParam?: string | null) {
               : `Automation gate: cleared — ${data.reason}`
             : `Automation gate: BLOCKED — ${data.reason}`,
         });
+        break;
+      case 'browser:initialized':
+        // Python confirmed browser is up — promote to executing so the canvas
+        // becomes visible before the first screenshot:frame arrives.
+        promoteToExecuting();
         break;
       case 'browser:state':
         // Mirror the backend browser lifecycle state machine (authoritative).
@@ -602,6 +617,7 @@ export function useAgentSession(sessionIdParam?: string | null) {
       'cos:drift',
       'cos:drift_abort',
       'cos:cpn_gate',
+      'browser:headful_mode',
     ];
 
     const unsubscribers = eventTypes.map((eventType) => {
@@ -775,6 +791,7 @@ export function useAgentSession(sessionIdParam?: string | null) {
     matchedSkills: store.matchedSkills,
     userPreferences: store.userPreferences,
     verificationResult: store.verificationResult,
+    headfulMode: store.headfulMode,
     startSession,
     sendInterrupt,
     pause,

@@ -164,3 +164,10 @@ __pycache__/
 apps/browser-py/skills/job_agent/
 # Per-user persistent Chromium profiles (cookies, sessions) — never commit.
 apps/browser-py/profiles/
+
+########################################
+# AI / Editor Workspaces
+########################################
+.claude/
+CLAUDE.md
+

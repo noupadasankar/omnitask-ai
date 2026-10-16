@@ -2,7 +2,7 @@
 
 Talks to the SAME tables the NestJS Prisma schema owns (apps/backend/prisma/
 schema.prisma) — the schema stays Prisma-authored (migrations run from Node
-only, per CLAUDE.md's pgvector-drift precedent). This module only reads and
+only, per database schema precedent). This module only reads and
 writes rows; it never runs a migration.
 
 IDs are generated client-side with uuid4(), mirroring Prisma's `@default(uuid())`

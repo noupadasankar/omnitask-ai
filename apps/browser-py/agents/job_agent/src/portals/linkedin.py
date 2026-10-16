@@ -404,7 +404,7 @@ class LinkedInPortal(BasePortal):
                 return False
 
             # ── Cognitive (LLM-first) completion ──────────────────────────────
-            # Hand the open Easy Apply form to the Claude reasoning loop, which
+            # Hand the open Easy Apply form to the cognitive reasoning loop, which
             # completes arbitrary multi-step / screening-question layouts
             # generically (observe→reason→act→verify). Returns True (submitted) /
             # False (blocked — honest skip). Returns None when the engine is

@@ -8,9 +8,6 @@ import { ExecutionEventBus } from '../../event-bus/execution-event-bus.service';
 import { ExecutionContext, PipelineExitReason } from './execution-context';
 import { IExecutionStage } from './execution-stage.interface';
 import { CognitiveOutcome, CognitiveOutcomeType } from '../../shared/interfaces/agent.interfaces';
-import { ZomatoAdapter } from '../domain-adapters/zomato-adapter.service';
-import { SwiggyAdapter } from '../domain-adapters/swiggy-adapter.service';
-import { PlaywrightProvider } from '../providers/playwright-provider.service';
 
 @Injectable()
 export class AutomationGateStage implements IExecutionStage {
@@ -145,43 +142,6 @@ export class AutomationGateStage implements IExecutionStage {
       return;
     }
 
-    // ── Domain adapter match ──
-    const firstStep = ctx.plan.steps[0];
-    if (firstStep && firstStep.action === 'navigate' && firstStep.value) {
-      const url = firstStep.value;
-      const adapters = [new ZomatoAdapter(), new SwiggyAdapter()];
-      let matchedAdapter: any = null;
-      for (const adapter of adapters) {
-        if (adapter.matches(url)) { matchedAdapter = adapter; break; }
-      }
-
-      if (matchedAdapter) {
-        this.logger.log(`Domain Adapter MATCHED for URL: "${url}". Launching dedicated structured navigator.`);
-        this.sessionManager.transitionBrowserState(sessionId, 'INITIALIZING');
-        const provider = new PlaywrightProvider();
-        await provider.launch(sessionId, ctx.userId!, { headless: ctx.config?.headless ?? true });
-        this.sessionManager.transitionBrowserState(sessionId, 'RUNNING');
-
-        this.eventBus.emit(sessionId, 'execution:event', {
-          type: 'agent:thinking',
-          data: { message: `Domain Adapter active. Navigating ${url} structurally.` },
-        });
-
-        const adapterResult = await matchedAdapter.executeGoal(provider, sessionId, ctx.goal);
-        await provider.close(sessionId);
-        this.sessionManager.transitionBrowserState(sessionId, 'STOPPED');
-
-        await this.prisma.executionSession.update({
-          where: { id: sessionId },
-          data: { status: adapterResult.success ? 'COMPLETED' : 'FAILED', completedAt: new Date(), errorMessage: adapterResult.error || null },
-        });
-
-        this.eventBus.emit(sessionId, 'execution:completed', { status: adapterResult.success ? 'success' : 'failed', reason: adapterResult.error });
-        this.sessionManager.delete(sessionId);
-        ctx.exitReason = PipelineExitReason.ADAPTER_COMPLETED;
-        return;
-      }
-    }
   }
 
   cancelPendingApproval(sessionId: string): void {

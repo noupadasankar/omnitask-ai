@@ -481,7 +481,7 @@ class InstahyrePortal(BasePortal):
             await asyncio.sleep(3)
 
             # ── Cognitive (LLM-first) completion ──────────────────────────────
-            # Let the Claude reasoning loop complete any follow-up questions in the
+            # Let the cognitive reasoning loop complete any follow-up questions in the
             # popup generically. None → engine unavailable; fall through to rules.
             cog = await self._complete_application_cognitively(
                 page, job,

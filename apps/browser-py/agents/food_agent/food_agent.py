@@ -50,10 +50,13 @@ FOOD_PORTALS: Dict[str, str] = {
     # Reservations
     "opentable":    "https://www.opentable.com/",
     "resy":         "https://resy.com/",
-    # Delivery
+    # Delivery — US
     "doordash":     "https://www.doordash.com/",
     "ubereats":     "https://www.ubereats.com/",
     "grubhub":      "https://www.grubhub.com/",
+    # Delivery — India
+    "swiggy":       "https://www.swiggy.com/",
+    "zomato":       "https://www.zomato.com/",
 }
 
 # Task-type / action labels used consistently in result dicts.
@@ -105,8 +108,8 @@ RESTAURANT_CARD_SELECTORS: List[str] = [
     "li[class*='item']",
 ]
 
-# Price / rating regexes.
-_PRICE_RE = re.compile(r"\$[\d,.]+", re.IGNORECASE)
+# Price / rating regexes (USD and INR).
+_PRICE_RE = re.compile(r"(?:\$|₹|Rs\.?)\s*[\d,.]+", re.IGNORECASE)
 _RATING_RE = re.compile(r"\b([1-5](\.\d)?)\s*(stars?|/5|out of 5)?\b", re.IGNORECASE)
 
 
@@ -248,7 +251,7 @@ class FoodAgent:
         location = task_context.get("location", "")
 
         await self._log(
-            f"Discovering restaurants: {query!r} in {location!r or 'current area'}",
+            f"Discovering restaurants: {query!r} in {(location or 'current area')!r}",
             level="info",
         )
 
@@ -675,6 +678,14 @@ class FoodAgent:
             "[class*='StoreCard']",
             "[class*='restaurant-card']",
             "[class*='store']",
+            # Swiggy
+            "[class*='restaurantList']",
+            "[class*='RestaurantList']",
+            "[data-testid='restaurant-tile']",
+            # Zomato
+            "[data-testid='ResCard']",
+            "[class*='sc-bFADNz']",
+            "[class*='result-listing']",
             "article",
             "li[class*='item']",
         ]
@@ -1008,6 +1019,10 @@ class FoodAgent:
             return f"https://www.ubereats.com/feed?diningMode=DELIVERY&pl={quote_plus(location)}"
         if portal_name == "grubhub":
             return f"https://www.grubhub.com/search?queryText={q}"
+        if portal_name == "swiggy":
+            return f"https://www.swiggy.com/search?query={quote_plus(dish)}"
+        if portal_name == "zomato":
+            return f"https://www.zomato.com/search?q={quote_plus(dish)}"
         return f"https://www.doordash.com/search/store/{q}/"
 
     def _build_reservation_url(
@@ -1047,7 +1062,7 @@ class FoodAgent:
         if key in TASK_ACTION_MAP:
             return TASK_ACTION_MAP[key]
         g = goal.lower()
-        if any(w in g for w in ("order", "delivery", "deliver", "doordash", "ubereats", "grubhub")):
+        if any(w in g for w in ("order", "delivery", "deliver", "doordash", "ubereats", "grubhub", "swiggy", "zomato")):
             return "order_delivery"
         if any(w in g for w in ("reserve", "reservation", "book", "table", "opentable", "resy")):
             return "reserve_table"
@@ -1064,11 +1079,12 @@ class FoodAgent:
         for name, url in FOOD_PORTALS.items():
             if name.replace("_", "") in g.replace(" ", ""):
                 return name, url
+        indian_hints = any(w in g for w in ("swiggy", "zomato", "₹", "inr", "india", "biryani", "dal", "paneer", "roti"))
         defaults: Dict[str, tuple] = {
             "find_restaurant": ("yelp", FOOD_PORTALS["yelp"]),
             "read_menu":       ("yelp", FOOD_PORTALS["yelp"]),
             "reserve_table":   ("opentable", FOOD_PORTALS["opentable"]),
-            "order_delivery":  ("doordash", FOOD_PORTALS["doordash"]),
+            "order_delivery":  ("swiggy", FOOD_PORTALS["swiggy"]) if indian_hints else ("doordash", FOOD_PORTALS["doordash"]),
         }
         pair = defaults.get(action, (None, None))
         return pair[0], pair[1]

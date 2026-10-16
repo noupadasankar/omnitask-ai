@@ -150,21 +150,37 @@ ${userContext?.preferences ? `User Preferences: ${JSON.stringify(userContext.pre
       taskType = has(/\bcompare|cheapest|price\b/) ? 'price_comparison' : 'shopping';
     } else if (has(/\b(research|find|summar|compare|analy|report|news|learn about)\b/)) {
       taskType = 'research';
-    } else if (has(/\b(email|mail|gmail|outlook|send\s+(an\s+)?email|inbox|compose|draft|read\s+mail|check\s+mail)\b/)) {
+    } else if (has(/\b(reply\s+to|respond\s+to|answer)\b.{0,30}\b(email|message|mail)\b/)) {
+      taskType = 'email_reply';
+      requiresLogin = true;
+    } else if (has(/\b(read|check|open|show|list|unread)\b.{0,20}\b(email|mail|inbox|messages?)\b/)) {
+      taskType = 'email_read';
+      requiresLogin = true;
+    } else if (has(/\b(email|mail|gmail|outlook|send\s+(an\s+)?email|inbox|compose|draft)\b/)) {
       taskType = 'email_send';
       requiresLogin = true;
     } else if (has(/\b(music|song|playlist|spotify|youtube\s+music|play\s+song|play\s+music|listen)\b/)) {
       taskType = 'music_play';
     } else if (has(/\b(video|youtube|watch|stream|play\s+video)\b/)) {
       taskType = 'video_play';
+    } else if (has(/\b(schedule|queue)\b.{0,20}\b(post|tweet|update|content)\b/)) {
+      taskType = 'social_schedule';
+      requiresLogin = true;
+    } else if (has(/\b(write|draft|create|generate)\b.{0,20}\b(post|caption|article|content|thread)\b/)) {
+      taskType = 'content_creation';
+      requiresLogin = true;
     } else if (has(/\b(tweet|post\s+on|share\s+on|social\s+media|instagram|facebook|threads)\b/)) {
       taskType = 'social_post';
       requiresLogin = true;
+    } else if (has(/\b(find|check)\b.{0,20}\b(free\s+slot|available\s+slot|open\s+slot|free\s+time|availability)\b/)) {
+      taskType = 'find_slot';
     } else if (has(/\b(schedule|meeting|appointment|calendar|remind\s+me|reschedule|set\s+up\s+a\s+call)\b/)) {
       taskType = 'create_event';
     } else if (has(/\b(pay|bill|electricity|recharge|emi|premium)\b/)) {
       taskType = 'bill_payment';
       requiresLogin = true;
+    } else if (has(/\b(generate|create|write|draft)\b.{0,20}\b(document|doc|report|proposal|summary|pdf)\b/)) {
+      taskType = 'document_generation';
     } else if (has(/\b(download|save\s+(the\s+)?(file|document|pdf)|spreadsheet|generate\s+(a\s+)?(doc|report|file))\b/)) {
       taskType = 'file_create';
     }

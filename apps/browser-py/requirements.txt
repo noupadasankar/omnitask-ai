@@ -10,7 +10,7 @@ openai>=1.30.0
 fastapi>=0.115.0
 uvicorn>=0.32.0
 # Direct Postgres access for ported domains (db/) — same Prisma-owned tables,
-# no migrations run from here. See CLAUDE.md's pgvector-drift precedent.
+# no migrations run from here. See database schema architecture documentation.
 asyncpg>=0.30.0
 # Verifies the same Bearer JWTs the Node backend issues (JWT_SECRET, HS256).
 pyjwt>=2.9.0

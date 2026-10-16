@@ -397,6 +397,10 @@ async def run_job(job: dict, publisher: EventPublisher, pw) -> None:
         page.on("crash", _on_crash)
 
         await publisher.publish(session_id, "browser:initialized", {"sessionId": session_id})
+        if not headless:
+            await publisher.publish(session_id, "browser:headful_mode", {
+                "sessionId": session_id, "headful": True,
+            })
         await publisher.publish(session_id, "worker:browser_state", {"state": "READY"})
 
     # Main execution — shared by fresh and resumed sessions.

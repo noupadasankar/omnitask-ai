@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import {
   Monitor, ShieldAlert, Maximize2, Minimize2, RefreshCw,
   Wifi, WifiOff, ChevronLeft, ChevronRight, RotateCw,
-  Lock, Paperclip, Loader2, Hand,
+  Lock, Paperclip, Loader2, Hand, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { wsService } from '@/services/websocket.service';
@@ -19,6 +19,7 @@ interface LiveBrowserViewProps {
   executionState?: ExecutionState | null;
   errorMessage?: string | null;
   sessionId?: string | null;
+  headfulMode?: boolean;
   children?: React.ReactNode;
 }
 
@@ -30,6 +31,7 @@ export function LiveBrowserView({
   executionState,
   errorMessage,
   sessionId,
+  headfulMode = false,
   children,
 }: LiveBrowserViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,7 +72,11 @@ export function LiveBrowserView({
   const isFailed = phase === 'failed';
   const isLaunching =
     executionState === 'BROWSER_INITIALIZING' || executionState === 'READY';
-  const isSessionStarting = !!sessionId && !currentScreenshot && !isFailed;
+  // Only show "Starting Chromium…" when the browser is actually launching (executing phase),
+  // not during the earlier planning phase (which can take 30-60 s).
+  const isSessionStarting =
+    !!sessionId && !currentScreenshot && !isFailed &&
+    (phase === 'executing' || phase === 'paused');
   const showPlaceholder = !currentScreenshot || phase === 'idle' || phase === 'parsing' || isFailed;
   const isAwaitingApproval = phase === 'waiting_approval';
 
@@ -460,7 +466,7 @@ export function LiveBrowserView({
             <div className="flex min-w-0 max-w-[280px] items-center gap-2 rounded-t-lg border border-b-0 border-white/10 bg-white/[0.04] px-3 py-1">
               <Monitor className="h-3 w-3 flex-shrink-0 text-zinc-500" />
               <span className="truncate text-[11px] text-zinc-300">
-                {currentScreenshot?.title || 'Chromium Sandbox'}
+                {currentScreenshot?.title || (headfulMode ? 'Chromium (Headful — see desktop)' : 'Chromium Sandbox')}
               </span>
             </div>
           </div>
@@ -592,14 +598,40 @@ export function LiveBrowserView({
           ) : children ? (
             <div className="absolute inset-0 flex items-center justify-center">{children}</div>
           ) : isSessionStarting || isLaunching ? (
-            /* Session active but no frame yet — Chromium is launching */
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-              <div>
-                <p className="font-mono text-sm font-bold text-emerald-400">Starting Chromium…</p>
-                <p className="mt-1 text-xs text-zinc-600">Stream begins on the first frame</p>
+            /* Session active but no frame yet */
+            headfulMode ? (
+              /* Headful: real Chrome window opened on the desktop */
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
+                <div className="pointer-events-none absolute inset-0 cyber-grid opacity-5" />
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                  <ExternalLink className="h-8 w-8 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-mono text-sm font-bold text-emerald-400 tracking-wider">
+                    CHROME WINDOW OPEN ON YOUR DESKTOP
+                  </p>
+                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-zinc-500">
+                    Watch the automation directly in the Chromium window that just
+                    opened. The stream below mirrors it once frames arrive.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 rounded border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="font-mono text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                    Headful Mode Active
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Headless: stream-only, waiting for first frame */
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
+                <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+                <div>
+                  <p className="font-mono text-sm font-bold text-emerald-400">Starting Chromium…</p>
+                  <p className="mt-1 text-xs text-zinc-600">Stream begins on the first frame</p>
+                </div>
+              </div>
+            )
           ) : (
             /* Fully idle — no session */
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 text-center px-6">
@@ -623,7 +655,7 @@ export function LiveBrowserView({
                 <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-zinc-600">
                   {isAwaitingApproval
                     ? 'Plan ready. The browser opens once you approve below.'
-                    : 'Launch a Job Agent to activate the live stream.'}
+                    : 'Start a task above to activate the live browser stream.'}
                 </p>
               </div>
             </div>
