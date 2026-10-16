@@ -82,7 +82,7 @@ jobs:
         run: pnpm --filter omnitask-ai-frontend test
       - name: Run Python tests
         run: |
-          pip install pytest pytest-asyncio
+          pip install -r apps/browser-py/requirements.txt pytest pytest-asyncio
           cd apps/browser-py && python -m pytest tests/ -q
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -120,11 +120,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check Docker credentials
         id: docker_check
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.DOCKER_USERNAME }}" ] && [ -n "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "enabled=true" >> $GITHUB_OUTPUT
+          if [ -n "$DOCKER_USER" ] && [ -n "$DOCKER_PASS" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "Skipping Docker image build & push: Docker secrets not configured in repository."
           fi
 
@@ -197,12 +200,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check deployment credentials
         id: deploy_check
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
-          if [ -n "${{ secrets.SERVER_HOST }}" ] && [ -n "${{ secrets.SERVER_SSH_KEY }}" ]; then
-            echo "enabled=true" >> $GITHUB_OUTPUT
+          if [ -n "$SERVER_HOST" ] && [ -n "$SERVER_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "Skipping production deployment: Server SSH secrets not configured in repository."
+          fi
+          if [ -n "$SENTRY_AUTH_TOKEN" ]; then
+            echo "sentry_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sentry_enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Deploy to production
@@ -221,7 +233,7 @@ jobs:
             IMAGE_TAG=${{ github.sha }} ./scripts/deploy.sh
 
       - name: Upload Sentry source maps
-        if: steps.deploy_check.outputs.enabled == 'true' && secrets.SENTRY_AUTH_TOKEN != ''
+        if: steps.deploy_check.outputs.enabled == 'true' && steps.deploy_check.outputs.sentry_enabled == 'true'
         uses: getsentry/action-release@v1
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
