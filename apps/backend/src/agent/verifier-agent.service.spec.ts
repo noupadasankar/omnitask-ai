@@ -98,6 +98,7 @@ describe('VerifierAgentService', () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           VerifierAgentService,
+          { provide: LlmService, useValue: mockLlmService },
           { provide: ConfigService, useValue: { get: configGet } },
         ],
       }).compile();
@@ -211,6 +212,7 @@ describe('VerifierAgentService', () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           VerifierAgentService,
+          { provide: LlmService, useValue: mockLlmService },
           { provide: ConfigService, useValue: { get: configGet } },
         ],
       }).compile();

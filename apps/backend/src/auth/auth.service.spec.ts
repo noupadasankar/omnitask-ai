@@ -73,14 +73,14 @@ describe('AuthService', () => {
     it('should write audit log on failed login', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       await expect(service.login({ email: 'x@y.com', password: 'p' })).rejects.toThrow();
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'LOGIN_FAILED' }) }));
+      expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'LOGIN_FAILED' }));
     });
 
     it('should write audit log on successful login', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: '1', email: 'a@b.com', name: 'T', role: 'USER', passwordHash: await bcrypt.hash('p', 4) });
       mockPrisma.session.create.mockResolvedValue({ refreshToken: 'rt' });
       await service.login({ email: 'a@b.com', password: 'p' });
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'LOGIN' }) }));
+      expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'LOGIN' }));
     });
   });
 
@@ -104,7 +104,7 @@ describe('AuthService', () => {
       mockPrisma.user.create.mockResolvedValue({ id: 'u2', email: 'u@b.com', name: 'U', role: 'USER' });
       mockPrisma.session.create.mockResolvedValue({ refreshToken: 'rt' });
       await service.register({ email: 'u@b.com', password: 'p', name: 'U' });
-      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'REGISTER' }) }));
+      expect(mockAuditService.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'REGISTER' }));
     });
 
     it('should hash password with bcrypt', async () => {

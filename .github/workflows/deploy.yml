@@ -8,7 +8,7 @@ on:
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '8'
+  PNPM_VERSION: '8.6.0'
   DOCKER_REGISTRY: 'docker.io'
 
 jobs:
@@ -26,8 +26,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter backend lint
-      - run: pnpm --filter frontend lint
+      - name: Run lint
+        run: pnpm lint
 
   test:
     name: Test
@@ -66,16 +66,24 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'pnpm'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm --filter backend prisma generate
       - name: Run backend unit tests
-        run: pnpm --filter backend test
+        run: pnpm --filter backend test -- --forceExit --maxWorkers=2
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/omnitask_test
           REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret-key-at-least-32-chars-long
       - name: Run frontend tests
-        run: pnpm --filter frontend test --run
+        run: pnpm --filter omnitask-ai-frontend test
       - name: Run Python tests
-        run: pip install pytest pytest-asyncio && cd apps/browser-py && python -m pytest tests/ -q
+        run: |
+          pip install pytest pytest-asyncio
+          cd apps/browser-py && python -m pytest tests/ -q
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
@@ -83,12 +91,30 @@ jobs:
           name: test-results
           path: apps/backend/coverage/
 
-  build-and-push:
-    name: Build & Push Docker Image
+  build:
+    name: Build
     needs: [lint, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - name: Build monorepo packages
+        run: pnpm build
+
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: [build]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && secrets.DOCKER_USERNAME != ''
 
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +125,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Extract metadata
+      - name: Extract frontend metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -111,7 +137,8 @@ jobs:
       - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./apps/frontend
+          file: ./apps/frontend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
@@ -140,7 +167,7 @@ jobs:
     needs: [build-and-push]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && secrets.SERVER_HOST != ''
     concurrency:
       group: production-deploy
       cancel-in-progress: false

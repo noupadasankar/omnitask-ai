@@ -134,41 +134,48 @@ export class MemoryStoreService {
       similarityThreshold?: number;
     } = {},
   ): Promise<IAgentMemory[]> {
-    const { type, limit = 5, similarityThreshold = 0.7 } = options;
-    const queryEmbedding = await this.embeddings.generateEmbedding(query);
-    if (!queryEmbedding.length) return [];
+    try {
+      const { type, limit = 5, similarityThreshold = 0.7 } = options;
+      const queryEmbedding = await this.embeddings.generateEmbedding(query);
+      if (!queryEmbedding || !queryEmbedding.length) return [];
 
-    const memories = type
-      ? await this.prisma.agentMemory.findMany({
-          where: { userId, type, deletedAt: null },
-          orderBy: { importance: 'desc' },
-          take: limit * 4,
-        })
-      : await this.prisma.agentMemory.findMany({
-          where: { userId, deletedAt: null },
-          orderBy: { importance: 'desc' },
-          take: limit * 4,
-        });
+      const memories = type
+        ? await this.prisma.agentMemory.findMany({
+            where: { userId, type, deletedAt: null },
+            orderBy: { importance: 'desc' },
+            take: limit * 4,
+          })
+        : await this.prisma.agentMemory.findMany({
+            where: { userId, deletedAt: null },
+            orderBy: { importance: 'desc' },
+            take: limit * 4,
+          });
 
-    const scored = memories.map((m: any) => ({
-      memory: m,
-      similarity: this.embeddings.cosineSimilarity(queryEmbedding, (m.embedding as any) || []),
-    }));
+      if (!memories || !Array.isArray(memories)) return [];
 
-    const filtered = scored
-      .filter((s: any) => s.similarity >= similarityThreshold)
-      .sort((a: any, b: any) => b.similarity - a.similarity)
-      .slice(0, limit)
-      .map((s: any) => s.memory);
+      const scored = memories.map((m: any) => ({
+        memory: m,
+        similarity: this.embeddings.cosineSimilarity(queryEmbedding, (m.embedding as any) || []),
+      }));
 
-    for (const memory of filtered) {
-      await this.prisma.agentMemory.update({
-        where: { id: memory.id },
-        data: { accessCount: { increment: 1 }, lastAccessedAt: new Date() },
-      });
+      const filtered = scored
+        .filter((s: any) => s.similarity >= similarityThreshold)
+        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .slice(0, limit)
+        .map((s: any) => s.memory);
+
+      for (const memory of filtered) {
+        await this.prisma.agentMemory.update({
+          where: { id: memory.id },
+          data: { accessCount: { increment: 1 }, lastAccessedAt: new Date() },
+        }).catch(() => {});
+      }
+
+      return filtered as IAgentMemory[];
+    } catch (err: any) {
+      this.logger.warn(`recallFallback failed: ${err.message}`);
+      return [];
     }
-
-    return filtered as IAgentMemory[];
   }
 
   private setWithEviction(key: string, entry: WorkingMemoryEntry): void {

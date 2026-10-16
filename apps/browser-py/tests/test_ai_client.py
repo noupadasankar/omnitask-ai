@@ -81,7 +81,7 @@ class TestAIClientExtract:
     def test_model_default(self):
         from ai import AIClient
         client = AIClient()
-        assert client.model == "gpt-4o-mini"
+        assert client.model == "llama-3.3-70b-versatile"
 
     def test_model_from_env(self):
         os.environ["PY_LLM_MODEL"] = "gpt-4o"

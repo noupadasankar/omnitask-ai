@@ -49,17 +49,21 @@ const makeAuditService = () => ({
   log: jest.fn().mockResolvedValue(undefined),
 });
 
-const makeStripe = () => ({
+const mockStripeInstance = {
   webhooks: {
     constructEvent: jest.fn(),
   },
-  customers: { create: jest.fn(), },
+  customers: { create: jest.fn() },
   checkout: { sessions: { create: jest.fn() } },
   billingPortal: { sessions: { create: jest.fn() } },
+};
+
+jest.mock('stripe', () => {
+  return jest.fn().mockImplementation(() => mockStripeInstance);
 });
 
 // We capture the stripe instance injected by the service via module replacement.
-let stripeInstance: ReturnType<typeof makeStripe>;
+let stripeInstance = mockStripeInstance;
 
 // ---------------------------------------------------------------------------
 // Module setup helper – re-creates the module for every test so mock state
@@ -67,12 +71,11 @@ let stripeInstance: ReturnType<typeof makeStripe>;
 // ---------------------------------------------------------------------------
 
 async function createModule(stripeKeyPresent = true, webhookSecretPresent = true) {
-  stripeInstance = makeStripe();
-
-  // Patch the Stripe constructor so BillingService receives our mock.
-  jest.mock('stripe', () => {
-    return jest.fn().mockImplementation(() => stripeInstance);
-  });
+  mockStripeInstance.webhooks.constructEvent.mockReset();
+  mockStripeInstance.customers.create.mockReset();
+  mockStripeInstance.checkout.sessions.create.mockReset();
+  mockStripeInstance.billingPortal.sessions.create.mockReset();
+  stripeInstance = mockStripeInstance;
 
   const prisma = makePrisma();
   const audit = makeAuditService();
@@ -96,8 +99,13 @@ async function createModule(stripeKeyPresent = true, webhookSecretPresent = true
     ],
   }).compile();
 
+  const service = module.get<BillingService>(BillingService);
+  if (stripeKeyPresent) {
+    (service as any).stripe = stripeInstance;
+  }
+
   return {
-    service: module.get<BillingService>(BillingService),
+    service,
     prisma,
     audit,
   };
