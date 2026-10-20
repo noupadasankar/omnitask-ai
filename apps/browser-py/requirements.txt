@@ -15,4 +15,4 @@ asyncpg>=0.30.0
 # Verifies the same Bearer JWTs the Node backend issues (JWT_SECRET, HS256).
 pyjwt>=2.9.0
 # Multipart form parsing for file uploads (job résumé upload) via FastAPI UploadFile.
-python-multipart>=0.0.9
+python-multipart>=0.0.32
